@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ═══════════════════════════════════════════════════════════════════
+   ANAM-AI Brand Color Scheme
+   Copy-paste the @theme block below to update the entire palette.
+   These values are exposed as both Tailwind utilities (bg-accent,
+   text-ink, etc.) and CSS custom properties (var(--color-accent)).
+   ═══════════════════════════════════════════════════════════════════ */
+@theme {
+  --color-bg: #fafaf9;           /* Warm off-white */
+  --color-bg2: #f5f5f4;          /* Stone */
+  --color-ink: #1c1917;          /* Deep charcoal */
+  --color-ink2: #44403c;         /* Warm gray */
+  --color-ink3: #78716c;         /* Medium gray */
+
+  --color-accent: #ea580c;       /* Vibrant orange - energetic & approachable */
+  --color-accent-hover: #c2410c; /* Deeper orange */
+  --color-accent-warm: #f59e0b;  /* Amber - warm collaboration */
+  --color-accent-cool: #0891b2;  /* Cyan - technical credibility */
 }
+/* ═══════════════════════════════════════════════════════════════════ */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-geist-sans, Arial, Helvetica, sans-serif);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--color-bg2); }
+::-webkit-scrollbar-thumb { background: var(--color-ink3); border-radius: 2px; }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
