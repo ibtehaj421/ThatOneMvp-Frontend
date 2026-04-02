@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocale } from "../../_components/providers/LocaleProvider";
 import { useAuth } from "../../_components/providers/AuthProvider";
-import { apiStartSession, apiSendMessage } from "../../_lib/api";
+import { apiStartSession, apiSendMessage, apiExportSession } from "../../_lib/api";
 
 interface Message {
   id: string;
@@ -20,8 +20,7 @@ interface Conversation {
   unread: number;
 }
 
-const FALLBACK_GREETING =
-  "Hello! I'm your ANAM-AI health assistant. I can help you understand symptoms, explain medications, or answer general health questions. How can I help you today?\n\n⚠️ Remember: I provide general information only. Always consult a qualified healthcare provider for medical advice.";
+const INITIAL_GREETING = "How are we feeling today?";
 
 function formatTime() {
   return new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
@@ -48,7 +47,8 @@ export default function ChatPage() {
   const [activeConv, setActiveConv] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionSeq, setSessionSeq] = useState<number | null>(null);
+  const [isComplete, setIsComplete] = useState(false);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -68,27 +68,27 @@ export default function ChatPage() {
     const convId = `conv-${Date.now()}`;
     setActiveConv(convId);
     setMessages([]);
-    setSessionId(null);
+    setSessionSeq(null);
+    setIsComplete(false);
     setThinking(true);
 
     const result = await apiStartSession();
-    const greeting = result.ok && result.greeting ? result.greeting : FALLBACK_GREETING;
-    const sid = result.ok && result.session_id ? result.session_id : null;
-    setSessionId(sid);
+    setSessionSeq(result.ok && result.session_seq != null ? result.session_seq : null);
+    setThinking(false);
 
+    // The frontend always initiates with this greeting — the model does not send one.
     const greetMsg: Message = {
       id: `m${Date.now()}`,
       role: "assistant",
-      content: greeting,
+      content: INITIAL_GREETING,
       time: formatTime(),
     };
     setMessages([greetMsg]);
-    setThinking(false);
 
     const newConv: Conversation = {
       id: convId,
       title: "New Conversation",
-      preview: greeting.slice(0, 50) + "…",
+      preview: INITIAL_GREETING,
       timestamp: formatTime(),
       unread: 0,
     };
@@ -97,7 +97,7 @@ export default function ChatPage() {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || thinking) return;
+    if (!text || thinking || isComplete) return;
 
     const userMsg: Message = {
       id: `m${Date.now()}`,
@@ -109,7 +109,6 @@ export default function ChatPage() {
     setInput("");
     setThinking(true);
 
-    // Update conversation preview
     setConversations((prev) =>
       prev.map((c) =>
         c.id === activeConv
@@ -119,13 +118,16 @@ export default function ChatPage() {
     );
 
     let reply = "";
-    if (sessionId) {
-      const result = await apiSendMessage(sessionId, text);
+    let complete = false;
+
+    if (sessionSeq != null) {
+      const result = await apiSendMessage(sessionSeq, text);
       reply = result.ok && result.reply
         ? result.reply
         : "I'm having trouble connecting right now. Please try again shortly.";
+      complete = result.ok ? (result.is_complete ?? false) : false;
     } else {
-      reply = "The AI service is currently unavailable. Please ensure the AI service is running and try again.";
+      reply = "Session could not be started. Please refresh and try again.";
     }
 
     const aiMsg: Message = {
@@ -136,6 +138,23 @@ export default function ChatPage() {
     };
     setMessages((prev) => [...prev, aiMsg]);
     setThinking(false);
+
+    if (complete) {
+      setIsComplete(true);
+    }
+  };
+
+  const handleExport = async () => {
+    if (sessionSeq == null) return;
+    const result = await apiExportSession(sessionSeq);
+    if (!result.ok || !result.text) return;
+    const blob = new Blob([result.text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `intake-history-session-${sessionSeq}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -277,6 +296,19 @@ export default function ChatPage() {
           <p className="text-[11px] text-amber-700 text-center">{t.chat.disclaimer}</p>
         </div>
 
+        {/* Session complete banner + export */}
+        {isComplete && (
+          <div className="px-4 py-2 bg-green-50 border-t border-green-100 flex items-center justify-between gap-3">
+            <p className="text-[12px] text-green-700">History taking complete. Your intake summary is ready.</p>
+            <button
+              onClick={handleExport}
+              className="text-[12px] font-medium text-green-800 underline underline-offset-2 hover:text-green-600 shrink-0"
+            >
+              Download summary
+            </button>
+          </div>
+        )}
+
         {/* Input area */}
         <div className="p-3 border-t border-[#e7e5e4] bg-white">
           <div className="flex items-end gap-2 bg-bg2 rounded-2xl border border-[#e7e5e4] px-3 py-2">
@@ -285,14 +317,15 @@ export default function ChatPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={t.chat.placeholder}
+              placeholder={isComplete ? "This session is complete." : t.chat.placeholder}
               rows={1}
-              className="flex-1 resize-none bg-transparent text-sm text-ink placeholder:text-ink3 outline-none max-h-32 leading-relaxed"
+              disabled={isComplete}
+              className="flex-1 resize-none bg-transparent text-sm text-ink placeholder:text-ink3 outline-none max-h-32 leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ minHeight: "24px" }}
             />
             <button
               onClick={sendMessage}
-              disabled={!input.trim() || thinking}
+              disabled={!input.trim() || thinking || isComplete}
               className="h-8 w-8 rounded-xl bg-accent text-white flex items-center justify-center hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
               <SendIcon />

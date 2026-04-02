@@ -237,56 +237,54 @@ export async function apiCreateBooking(
   }
 }
 
-// ── AI Service ───────────────────────────────────────────────────────────────
+// ── AI Chat ──────────────────────────────────────────────────────────────────
 
+// Calls Go backend POST /chat/start — requires JWT (handled by apiFetch).
+// Returns the numeric session_seq assigned by the backend.
 export async function apiStartSession(): Promise<{
   ok: boolean;
-  session_id?: string;
-  greeting?: string;
+  session_seq?: number;
   error?: string;
 }> {
   try {
-    const res = await fetch("/api/ai/session/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) return { ok: false, error: "Could not start AI session." };
-    const data = await res.json() as { session_id: string; greeting: string };
-    return { ok: true, session_id: data.session_id, greeting: data.greeting };
+    const res = await apiFetch("/chat/start", { method: "POST" });
+    if (!res.ok) return { ok: false, error: "Could not start session." };
+    const data = await res.json() as { session_seq: number };
+    return { ok: true, session_seq: data.session_seq };
   } catch {
-    return { ok: false, error: "AI service unavailable." };
+    return { ok: false, error: "Cannot reach server." };
   }
 }
 
+// Calls Go backend POST /chat/message — requires JWT.
+// session_seq is the number returned by apiStartSession.
 export async function apiSendMessage(
-  sessionId: string,
+  sessionSeq: number,
   message: string
-): Promise<{ ok: boolean; reply?: string; cmas?: unknown; error?: string }> {
+): Promise<{ ok: boolean; reply?: string; is_complete?: boolean; error?: string }> {
   try {
-    const res = await fetch("/api/ai/session/chat", {
+    const res = await apiFetch("/chat/message", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, message }),
+      body: JSON.stringify({ session_seq: sessionSeq, message }),
     });
-    if (!res.ok) return { ok: false, error: "Could not reach AI service." };
-    const data = await res.json() as { reply: string; cmas?: unknown };
-    return { ok: true, reply: data.reply, cmas: data.cmas };
+    if (!res.ok) return { ok: false, error: "Could not reach server." };
+    const data = await res.json() as { reply: string; is_complete: boolean };
+    return { ok: true, reply: data.reply, is_complete: data.is_complete };
   } catch {
-    return { ok: false, error: "AI service unavailable." };
+    return { ok: false, error: "Cannot reach server." };
   }
 }
 
+// Calls Go backend GET /chat/export/:session_seq — returns plain-text clinical summary.
 export async function apiExportSession(
-  sessionId: string
-): Promise<{ ok: boolean; soap_note?: string; error?: string }> {
+  sessionSeq: number
+): Promise<{ ok: boolean; text?: string; error?: string }> {
   try {
-    const res = await fetch(
-      `/api/ai/session/export?session_id=${encodeURIComponent(sessionId)}`
-    );
+    const res = await apiFetch(`/chat/export/${sessionSeq}`);
     if (!res.ok) return { ok: false, error: "Could not export session." };
-    const data = await res.json() as { soap_note: string };
-    return { ok: true, soap_note: data.soap_note };
+    const text = await res.text();
+    return { ok: true, text };
   } catch {
-    return { ok: false, error: "AI service unavailable." };
+    return { ok: false, error: "Cannot reach server." };
   }
 }
