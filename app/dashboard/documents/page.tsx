@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocale } from "../../_components/providers/LocaleProvider";
 import { Button } from "../../_components/ui/Button";
+import { apiListDocuments, apiUploadDocument } from "../../_lib/api";
 
 type FileCategory = "all" | "reports" | "prescriptions" | "imaging" | "other";
 
@@ -15,15 +16,6 @@ interface Doc {
   type: string;
 }
 
-const MOCK_DOCS: Doc[] = [
-  { id: "1", name: "Blood Test Results.pdf", category: "reports", date: "Mar 15, 2026", size: "2.4 MB", type: "PDF" },
-  { id: "2", name: "Chest X-Ray Report.pdf", category: "imaging", date: "Mar 10, 2026", size: "8.1 MB", type: "PDF" },
-  { id: "3", name: "Metformin Prescription.pdf", category: "prescriptions", date: "Mar 5, 2026", size: "0.5 MB", type: "PDF" },
-  { id: "4", name: "Liver Function Test.pdf", category: "reports", date: "Feb 28, 2026", size: "1.8 MB", type: "PDF" },
-  { id: "5", name: "ECG Report.pdf", category: "imaging", date: "Feb 20, 2026", size: "3.2 MB", type: "PDF" },
-  { id: "6", name: "Amoxicillin Prescription.pdf", category: "prescriptions", date: "Jan 12, 2026", size: "0.3 MB", type: "PDF" },
-  { id: "7", name: "Insurance Card.jpg", category: "other", date: "Jan 1, 2026", size: "0.8 MB", type: "Image" },
-];
 
 function fileIcon(type: string, category: string) {
   if (category === "imaging")
@@ -58,8 +50,27 @@ export default function DocumentsPage() {
   const [category, setCategory] = useState<FileCategory>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Doc | null>(null);
-  const [docs, setDocs] = useState<Doc[]>(MOCK_DOCS);
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
   const [dragOver, setDragOver] = useState(false);
+
+  // Load documents from backend on mount.
+  useEffect(() => {
+    apiListDocuments().then((result) => {
+      if (result.ok && result.files) {
+        const backendDocs: Doc[] = result.files.map((filename, i) => ({
+          id: `backend-${i}`,
+          name: filename,
+          category: "other" as const,
+          date: "",
+          size: "",
+          type: filename.toLowerCase().endsWith(".pdf") ? "PDF" : "Image",
+        }));
+        setDocs(backendDocs);
+      }
+      setLoadingDocs(false);
+    });
+  }, []);
 
   const categories: { key: FileCategory; label: string }[] = [
     { key: "all", label: t.documents.all },
@@ -75,9 +86,10 @@ export default function DocumentsPage() {
     return matchCat && matchSearch;
   });
 
-  const handleUpload = (files: FileList | null) => {
+  const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    Array.from(files).forEach((file) => {
+    for (const file of Array.from(files)) {
+      await apiUploadDocument(file);
       const newDoc: Doc = {
         id: `d${Date.now()}-${Math.random()}`,
         name: file.name,
@@ -87,7 +99,7 @@ export default function DocumentsPage() {
         type: file.type.includes("image") ? "Image" : "PDF",
       };
       setDocs((prev) => [newDoc, ...prev]);
-    });
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -154,7 +166,11 @@ export default function DocumentsPage() {
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files); }}
         >
-          {filtered.length === 0 ? (
+          {loadingDocs ? (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-sm text-ink3">Loading documents…</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center gap-3 p-8">
               <svg className="w-12 h-12 text-ink3/30" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

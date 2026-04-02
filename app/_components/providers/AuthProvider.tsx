@@ -8,6 +8,14 @@ import {
   ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import {
+  apiLogin,
+  apiRegister,
+  apiLogout,
+  apiGetProfile,
+  getToken,
+  BackendProfile,
+} from "../../_lib/api";
 
 export type AccountType = "individual" | "family-head" | "family-member";
 
@@ -28,6 +36,7 @@ export interface User {
   dob?: string;
   gender?: string;
   accountType: AccountType;
+  role?: "patient" | "provider" | "admin";
   familyId?: string;
   familyMembers?: FamilyMember[];
   createdAt: string;
@@ -45,7 +54,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   register: (data: RegisterData) => Promise<{ ok: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
   inviteFamilyMember: (email: string) => Promise<{ ok: boolean; error?: string }>;
   removeFamilyMember: (memberId: string) => void;
@@ -134,6 +143,18 @@ function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
+function profileToUser(profile: BackendProfile): User {
+  const role = profile.Role as User["role"];
+  return {
+    id: String(profile.ID),
+    name: profile.Username,
+    email: profile.Email,
+    accountType: "individual",
+    role,
+    createdAt: profile.CreatedAt,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -141,22 +162,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     seedDemoAccounts();
-    const sessionId = getSession();
-    if (sessionId) {
-      const users = getStoredUsers();
-      const found = users.find((u) => u.id === sessionId);
-      if (found) {
-        const { password: _pw, ...rest } = found;
-        setUser(rest);
+
+    const restoreSession = async () => {
+      // If a JWT token exists, validate it against the backend first.
+      if (getToken()) {
+        const result = await apiGetProfile();
+        if (result.ok && result.profile) {
+          setUser(profileToUser(result.profile));
+          setIsLoading(false);
+          return;
+        }
+        // Token is stale — fall through to localStorage session.
       }
-    }
-    setIsLoading(false);
+
+      // Fall back to localStorage-based session (demo accounts).
+      const sessionId = getSession();
+      if (sessionId) {
+        const users = getStoredUsers();
+        const found = users.find((u) => u.id === sessionId);
+        if (found) {
+          const { password: _pw, ...rest } = found;
+          setUser(rest);
+        }
+      }
+      setIsLoading(false);
+    };
+
+    restoreSession();
   }, []);
 
   const login = async (
     email: string,
     password: string
   ): Promise<{ ok: boolean; error?: string }> => {
+    // Try backend first.
+    const backendResult = await apiLogin(email, password);
+
+    if (backendResult.ok) {
+      const profileResult = await apiGetProfile();
+      if (profileResult.ok && profileResult.profile) {
+        setUser(profileToUser(profileResult.profile));
+        return { ok: true };
+      }
+      return { ok: false, error: "Could not load profile after login." };
+    }
+
+    // If the server is reachable but credentials are wrong, propagate the error.
+    if (backendResult.error !== "Cannot reach server.") {
+      return { ok: false, error: backendResult.error };
+    }
+
+    // Server unreachable — fall back to demo accounts in localStorage.
     const users = getStoredUsers();
     const found = users.find(
       (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
@@ -173,47 +229,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (
     data: RegisterData
   ): Promise<{ ok: boolean; error?: string }> => {
-    const users = getStoredUsers();
-    if (users.find((u) => u.email.toLowerCase() === data.email.toLowerCase())) {
-      return { ok: false, error: "An account with this email already exists." };
+    // Register on the backend.
+    const regResult = await apiRegister(data.name, data.email, data.password);
+    if (!regResult.ok) {
+      return { ok: false, error: regResult.error };
     }
-    const id = `user-${Date.now()}`;
-    const familyId =
-      data.accountType === "family-head" ? `family-${Date.now()}` : undefined;
 
-    const newUser: User & { password: string } = {
-      id,
-      name: data.name,
-      email: data.email,
-      password: data.password,
-      accountType: data.accountType,
-      familyId,
-      familyMembers:
-        data.accountType === "family-head"
-          ? [
-              {
-                id: `fm-${Date.now()}`,
-                name: data.name,
-                email: data.email,
-                role: "head",
-                status: "active",
-                joinedAt: new Date().toISOString(),
-              },
-            ]
-          : undefined,
-      createdAt: new Date().toISOString(),
-    };
+    // Auto-login after successful registration.
+    const loginResult = await apiLogin(data.email, data.password);
+    if (!loginResult.ok) {
+      return { ok: false, error: loginResult.error };
+    }
 
-    users.push(newUser);
-    saveUsers(users);
-
-    const { password: _pw, ...rest } = newUser;
-    setUser(rest);
-    saveSession(id);
+    const profileResult = await apiGetProfile();
+    if (profileResult.ok && profileResult.profile) {
+      setUser(profileToUser(profileResult.profile));
+    }
     return { ok: true };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await apiLogout(); // clears JWT token; no-ops gracefully if server unreachable
     setUser(null);
     clearSession();
     router.push("/");
@@ -223,11 +259,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     const updated = { ...user, ...updates };
     setUser(updated);
-    const users = getStoredUsers();
-    const idx = users.findIndex((u) => u.id === user.id);
-    if (idx !== -1) {
-      users[idx] = { ...users[idx], ...updates };
-      saveUsers(users);
+    // Only persist to localStorage for demo/local accounts (no JWT).
+    if (!getToken()) {
+      const users = getStoredUsers();
+      const idx = users.findIndex((u) => u.id === user.id);
+      if (idx !== -1) {
+        users[idx] = { ...users[idx], ...updates };
+        saveUsers(users);
+      }
     }
   };
 

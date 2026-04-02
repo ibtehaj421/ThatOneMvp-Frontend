@@ -24,6 +24,8 @@ const translations = {
       family: "Family",
       settings: "Settings",
       logout: "Sign Out",
+      patients: "Patients",
+      provider_dashboard: "Provider Dashboard",
     },
     landing: {
       hero_title: "Securing Your Health\nin a Digital World",
@@ -219,6 +221,8 @@ const translations = {
       family: "خاندان",
       settings: "ترتیبات",
       logout: "باہر نکلیں",
+      patients: "مریض",
+      provider_dashboard: "فراہم کنندہ ڈیش بورڈ",
     },
     landing: {
       hero_title: "ڈیجیٹل دنیا میں\nآپ کی صحت محفوظ",

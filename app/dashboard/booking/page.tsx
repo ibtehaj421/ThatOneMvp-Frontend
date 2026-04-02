@@ -1,31 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocale } from "../../_components/providers/LocaleProvider";
 import { Button } from "../../_components/ui/Button";
+import {
+  apiCreateBooking,
+  saveLocalBooking,
+  getLocalBookings,
+  cancelLocalBooking,
+  type LocalBooking,
+} from "../../_lib/api";
 
-interface Appointment {
-  id: string;
-  doctor: string;
-  specialty: string;
-  date: string;
-  time: string;
-  status: "confirmed" | "pending" | "cancelled";
-  avatar: string;
-}
-
-const APPOINTMENTS: Appointment[] = [
-  { id: "1", doctor: "Dr. Sarah Khan", specialty: "General Physician", date: "Apr 2, 2026", time: "10:00 AM", status: "confirmed", avatar: "SK" },
-  { id: "2", doctor: "Dr. Ahmed Malik", specialty: "Cardiologist", date: "Apr 8, 2026", time: "2:30 PM", status: "pending", avatar: "AM" },
-  { id: "3", doctor: "Dr. Fatima Noor", specialty: "Dermatologist", date: "Mar 15, 2026", time: "11:00 AM", status: "confirmed", avatar: "FN" },
-];
+// LocalBooking is imported from api.ts
 
 const AVAILABLE_SLOTS = ["9:00 AM", "9:30 AM", "10:00 AM", "11:30 AM", "2:00 PM", "3:00 PM", "4:30 PM"];
 const BOOKED_SLOTS = ["10:00 AM", "2:00 PM"];
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-function statusColor(s: Appointment["status"]) {
+function statusColor(s: LocalBooking["status"]) {
   if (s === "confirmed") return "bg-green-50 text-green-700 border border-green-100";
   if (s === "pending") return "bg-amber-50 text-amber-700 border border-amber-100";
   return "bg-red-50 text-red-700 border border-red-100";
@@ -89,6 +82,11 @@ export default function BookingPage() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [bookedMsg, setBookedMsg] = useState("");
   const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
+  const [bookings, setBookings] = useState<LocalBooking[]>([]);
+
+  useEffect(() => {
+    setBookings(getLocalBookings());
+  }, []);
 
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
@@ -103,15 +101,40 @@ export default function BookingPage() {
     setSelectedSlot(null);
   };
 
-  const handleBook = () => {
+  const handleBook = async () => {
     if (!selectedDay || !selectedSlot) return;
+
+    // Parse the slot time string (e.g. "9:00 AM") into hours/minutes.
+    const [timePart, meridiem] = selectedSlot.split(" ");
+    const [rawHour, rawMin] = timePart.split(":").map(Number);
+    let hour = rawHour;
+    if (meridiem === "PM" && hour !== 12) hour += 12;
+    if (meridiem === "AM" && hour === 12) hour = 0;
+
+    const start = new Date(year, month, selectedDay, hour, rawMin ?? 0);
+    const end = new Date(start.getTime() + 30 * 60 * 1000); // 30-minute slot
+
+    await apiCreateBooking(1, start.toISOString(), end.toISOString());
+
+    // Save to localStorage so we can display the list (no GET /bookings endpoint)
+    saveLocalBooking({
+      organizationId: 1,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      notes: "",
+      status: "pending",
+    });
+    setBookings(getLocalBookings());
+
     setBookedMsg(`Appointment request sent for ${MONTHS[month]} ${selectedDay} at ${selectedSlot}. You will receive a confirmation shortly.`);
     setSelectedDay(null);
     setSelectedSlot(null);
   };
 
-  const upcoming = APPOINTMENTS.filter((a) => a.status !== "cancelled" && new Date(a.date) >= today);
-  const past = APPOINTMENTS.filter((a) => new Date(a.date) < today);
+  const upcoming = bookings.filter(
+    (b) => b.status !== "cancelled" && new Date(b.startTime) >= today
+  );
+  const past = bookings.filter((b) => new Date(b.startTime) < today);
   const displayList = activeTab === "upcoming" ? upcoming : past;
 
   return (
@@ -222,41 +245,54 @@ export default function BookingPage() {
                 <p className="text-sm text-ink3">No {activeTab} appointments</p>
               </div>
             ) : (
-              displayList.map((appt) => (
-                <div key={appt.id} className="bg-white rounded-2xl border border-[#e7e5e4] p-4 flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-full bg-accent/10 text-accent font-semibold text-sm flex items-center justify-center shrink-0">
-                    {appt.avatar}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-ink">{appt.doctor}</p>
-                    <p className="text-xs text-ink3">{appt.specialty}</p>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-xs text-ink2 flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        {appt.date}
+              displayList.map((appt) => {
+                const start = new Date(appt.startTime);
+                const dateStr = start.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                const timeStr = start.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+                return (
+                  <div key={appt.id} className="bg-white rounded-2xl border border-[#e7e5e4] p-4 flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-full bg-accent/10 text-accent font-semibold text-sm flex items-center justify-center shrink-0">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-ink">Appointment</p>
+                      <p className="text-xs text-ink3">Organization #{appt.organizationId}</p>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <span className="text-xs text-ink2 flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          {dateStr}
+                        </span>
+                        <span className="text-xs text-ink2 flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {timeStr}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${statusColor(appt.status)}`}>
+                        {t.booking[appt.status]}
                       </span>
-                      <span className="text-xs text-ink2 flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        {appt.time}
-                      </span>
+                      {activeTab === "upcoming" && (
+                        <button
+                          onClick={() => {
+                            cancelLocalBooking(appt.id);
+                            setBookings(getLocalBookings());
+                          }}
+                          className="text-[11px] text-red-500 hover:text-red-700 font-medium transition-colors"
+                        >
+                          {t.booking.cancel_appt}
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${statusColor(appt.status)}`}>
-                      {t.booking[appt.status]}
-                    </span>
-                    {activeTab === "upcoming" && (
-                      <button className="text-[11px] text-red-500 hover:text-red-700 font-medium transition-colors">
-                        {t.booking.cancel_appt}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

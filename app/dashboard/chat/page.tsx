@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocale } from "../../_components/providers/LocaleProvider";
 import { useAuth } from "../../_components/providers/AuthProvider";
+import { apiStartSession, apiSendMessage } from "../../_lib/api";
 
 interface Message {
   id: string;
@@ -19,40 +20,8 @@ interface Conversation {
   unread: number;
 }
 
-const MOCK_CONVERSATIONS: Conversation[] = [
-  { id: "1", title: "Blood pressure symptoms", preview: "I've been having headaches lately…", timestamp: "10:32 AM", unread: 0 },
-  { id: "2", title: "Medication side effects", preview: "Is it normal to feel dizzy after…", timestamp: "9:15 AM", unread: 2 },
-  { id: "3", title: "Diet recommendations", preview: "What foods should I avoid with…", timestamp: "Yesterday", unread: 0 },
-  { id: "4", title: "Exercise after surgery", preview: "When can I start light exercise…", timestamp: "Mar 27", unread: 0 },
-];
-
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: "m1",
-    role: "assistant",
-    content: "Hello! I'm your ANAM-AI health assistant. I can help you understand symptoms, explain medications, or answer general health questions. How can I help you today?\n\n⚠️ Remember: I provide general information only. Always consult a qualified healthcare provider for medical advice.",
-    time: "10:32 AM",
-  },
-  {
-    id: "m2",
-    role: "user",
-    content: "I've been experiencing headaches for the past few days. What could be causing them?",
-    time: "10:33 AM",
-  },
-  {
-    id: "m3",
-    role: "assistant",
-    content: "Headaches can have many causes. Here are some common ones:\n\n**Tension headaches** are the most frequent — often triggered by stress, poor posture, or eye strain.\n\n**Dehydration** is a very common culprit. Are you drinking enough water throughout the day?\n\n**Sleep issues** — both too much or too little sleep can cause headaches.\n\n**Hypertension** (high blood pressure) can also cause headaches, especially at the back of the head.\n\nSome questions to help narrow it down:\n• Where is the pain located (forehead, temples, back of head)?\n• Is it throbbing or a dull ache?\n• Any other symptoms like nausea, sensitivity to light?\n\nIf headaches are persistent, severe, or sudden-onset, please see a doctor promptly.",
-    time: "10:33 AM",
-  },
-];
-
-const AI_RESPONSES = [
-  "That's a great question. Based on what you've described, I'd recommend monitoring your symptoms and staying hydrated. If symptoms persist for more than 3 days, please consult your healthcare provider.",
-  "I understand your concern. There are several possible explanations for what you're experiencing. The most common causes are usually benign, but it's always good to rule out anything serious with a proper examination.",
-  "Thank you for sharing that information. Here are some general guidelines that may help:\n\n1. Rest and stay hydrated\n2. Avoid triggers if you can identify them\n3. Keep a symptom diary\n\nWould you like me to help you understand any specific aspect of this further?",
-  "That's something worth discussing with your doctor. In the meantime, make sure you're not skipping meals, getting adequate sleep (7-9 hours), and managing stress levels. These lifestyle factors affect health more than most people realize.",
-];
+const FALLBACK_GREETING =
+  "Hello! I'm your ANAM-AI health assistant. I can help you understand symptoms, explain medications, or answer general health questions. How can I help you today?\n\n⚠️ Remember: I provide general information only. Always consult a qualified healthcare provider for medical advice.";
 
 function formatTime() {
   return new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
@@ -76,16 +45,55 @@ function PlusIcon() {
 export default function ChatPage() {
   const { t } = useLocale();
   const { user } = useAuth();
-  const [activeConv, setActiveConv] = useState("1");
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const [activeConv, setActiveConv] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Start a session on first load
+  useEffect(() => {
+    startNewSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinking]);
+
+  const startNewSession = async () => {
+    const convId = `conv-${Date.now()}`;
+    setActiveConv(convId);
+    setMessages([]);
+    setSessionId(null);
+    setThinking(true);
+
+    const result = await apiStartSession();
+    const greeting = result.ok && result.greeting ? result.greeting : FALLBACK_GREETING;
+    const sid = result.ok && result.session_id ? result.session_id : null;
+    setSessionId(sid);
+
+    const greetMsg: Message = {
+      id: `m${Date.now()}`,
+      role: "assistant",
+      content: greeting,
+      time: formatTime(),
+    };
+    setMessages([greetMsg]);
+    setThinking(false);
+
+    const newConv: Conversation = {
+      id: convId,
+      title: "New Conversation",
+      preview: greeting.slice(0, 50) + "…",
+      timestamp: formatTime(),
+      unread: 0,
+    };
+    setConversations((prev) => [newConv, ...prev]);
+  };
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -101,13 +109,29 @@ export default function ChatPage() {
     setInput("");
     setThinking(true);
 
-    // Simulate AI response delay
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+    // Update conversation preview
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConv
+          ? { ...c, title: text.slice(0, 40) || c.title, preview: text.slice(0, 50), timestamp: formatTime() }
+          : c
+      )
+    );
+
+    let reply = "";
+    if (sessionId) {
+      const result = await apiSendMessage(sessionId, text);
+      reply = result.ok && result.reply
+        ? result.reply
+        : "I'm having trouble connecting right now. Please try again shortly.";
+    } else {
+      reply = "The AI service is currently unavailable. Please ensure the AI service is running and try again.";
+    }
 
     const aiMsg: Message = {
       id: `m${Date.now() + 1}`,
       role: "assistant",
-      content: AI_RESPONSES[Math.floor(Math.random() * AI_RESPONSES.length)],
+      content: reply,
       time: formatTime(),
     };
     setMessages((prev) => [...prev, aiMsg]);
@@ -129,7 +153,9 @@ export default function ChatPage() {
       <aside className="hidden md:flex w-64 flex-col border-r border-[#e7e5e4] bg-white shrink-0">
         <div className="p-3 border-b border-[#e7e5e4]">
           <button
-            className="w-full flex items-center justify-center gap-2 h-9 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+            onClick={startNewSession}
+            disabled={thinking}
+            className="w-full flex items-center justify-center gap-2 h-9 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
           >
             <PlusIcon />
             {t.chat.new_chat}
@@ -138,32 +164,36 @@ export default function ChatPage() {
 
         <div className="flex-1 overflow-y-auto py-2">
           <p className="px-3 py-1.5 text-[11px] font-semibold text-ink3 uppercase tracking-wider">{t.chat.today}</p>
-          {MOCK_CONVERSATIONS.map((conv) => (
-            <button
-              key={conv.id}
-              onClick={() => setActiveConv(conv.id)}
-              className={[
-                "w-full text-left px-3 py-3 mx-1 rounded-xl transition-colors",
-                activeConv === conv.id ? "bg-orange-50" : "hover:bg-bg2",
-              ].join(" ")}
-              style={{ width: "calc(100% - 8px)" }}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className={`text-sm font-medium truncate ${activeConv === conv.id ? "text-accent" : "text-ink"}`}>
-                  {conv.title}
-                </p>
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-[10px] text-ink3">{conv.timestamp}</span>
-                  {conv.unread > 0 && (
-                    <span className="w-4 h-4 rounded-full bg-accent text-white text-[9px] flex items-center justify-center font-bold">
-                      {conv.unread}
-                    </span>
-                  )}
+          {conversations.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-ink3 text-center">No conversations yet</p>
+          ) : (
+            conversations.map((conv) => (
+              <button
+                key={conv.id}
+                onClick={() => setActiveConv(conv.id)}
+                className={[
+                  "w-full text-left px-3 py-3 mx-1 rounded-xl transition-colors",
+                  activeConv === conv.id ? "bg-orange-50" : "hover:bg-bg2",
+                ].join(" ")}
+                style={{ width: "calc(100% - 8px)" }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className={`text-sm font-medium truncate ${activeConv === conv.id ? "text-accent" : "text-ink"}`}>
+                    {conv.title}
+                  </p>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] text-ink3">{conv.timestamp}</span>
+                    {conv.unread > 0 && (
+                      <span className="w-4 h-4 rounded-full bg-accent text-white text-[9px] flex items-center justify-center font-bold">
+                        {conv.unread}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <p className="text-xs text-ink3 truncate mt-0.5">{conv.preview}</p>
-            </button>
-          ))}
+                <p className="text-xs text-ink3 truncate mt-0.5">{conv.preview}</p>
+              </button>
+            ))
+          )}
         </div>
       </aside>
 

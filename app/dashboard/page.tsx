@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "../_components/providers/AuthProvider";
 import { useLocale } from "../_components/providers/LocaleProvider";
+import { apiListDocuments, getLocalBookings } from "../_lib/api";
 
 function StatCard({
   label,
@@ -96,6 +98,16 @@ const recentActivity = [
 export default function DashboardPage() {
   const { user } = useAuth();
   const { t } = useLocale();
+  const [docCount, setDocCount] = useState<number>(0);
+  const [bookingCount, setBookingCount] = useState<number>(0);
+
+  useEffect(() => {
+    apiListDocuments().then((result) => {
+      if (result.ok && result.files) setDocCount(result.files.length);
+    });
+    const bookings = getLocalBookings().filter((b) => b.status !== "cancelled");
+    setBookingCount(bookings.length);
+  }, []);
 
   const hour = new Date().getHours();
   const greeting =
@@ -128,7 +140,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           label={t.dashboard.upcoming_label}
-          value={2}
+          value={bookingCount}
           color="bg-cyan-50 text-accent-cool"
           href="/dashboard/booking"
           icon={
@@ -150,7 +162,7 @@ export default function DashboardPage() {
         />
         <StatCard
           label={t.dashboard.docs_label}
-          value={7}
+          value={docCount}
           color="bg-amber-50 text-accent-warm"
           href="/dashboard/documents"
           icon={

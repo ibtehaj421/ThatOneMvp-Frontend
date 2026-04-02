@@ -10,6 +10,8 @@ import { usePathname } from "next/navigation";
 
 function getPageTitle(pathname: string, t: ReturnType<typeof useLocale>["t"]) {
   if (pathname === "/dashboard") return t.dashboard.overview;
+  if (pathname.startsWith("/dashboard/provider/patients")) return t.nav.patients;
+  if (pathname.startsWith("/dashboard/provider")) return t.nav.provider_dashboard;
   if (pathname.startsWith("/dashboard/chat")) return t.chat.title;
   if (pathname.startsWith("/dashboard/booking")) return t.booking.title;
   if (pathname.startsWith("/dashboard/documents")) return t.documents.title;

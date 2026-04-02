@@ -5,10 +5,14 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "./providers/AuthProvider";
 import { useLocale } from "./providers/LocaleProvider";
 
+type NavLabelKey = keyof ReturnType<typeof useLocale>["t"]["nav"];
+
 interface NavItem {
   href: string;
-  labelKey: keyof ReturnType<typeof useLocale>["t"]["nav"];
+  labelKey: NavLabelKey;
   icon: React.ReactNode;
+  providerOnly?: boolean;
+  patientOnly?: boolean;
 }
 
 function GridIcon() {
@@ -56,6 +60,13 @@ function GearIcon() {
     </svg>
   );
 }
+function PatientsIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+    </svg>
+  );
+}
 function LogoutIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -74,14 +85,23 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const { logout, user } = useAuth();
   const { t } = useLocale();
 
-  const navItems: NavItem[] = [
+  const isProvider = user?.role === "provider" || user?.role === "admin";
+
+  const allNavItems: Array<{ href: string; labelKey: NavLabelKey; icon: React.ReactNode; providerOnly?: boolean; patientOnly?: boolean }> = [
     { href: "/dashboard", labelKey: "overview", icon: <GridIcon /> },
+    { href: "/dashboard/provider", labelKey: "provider_dashboard", icon: <GridIcon />, providerOnly: true },
+    { href: "/dashboard/provider/patients", labelKey: "patients", icon: <PatientsIcon />, providerOnly: true },
     { href: "/dashboard/chat", labelKey: "chat", icon: <ChatIcon /> },
     { href: "/dashboard/booking", labelKey: "booking", icon: <CalendarIcon /> },
     { href: "/dashboard/documents", labelKey: "documents", icon: <DocumentIcon /> },
-    { href: "/dashboard/family", labelKey: "family", icon: <UsersIcon /> },
+    { href: "/dashboard/family", labelKey: "family", icon: <UsersIcon />, patientOnly: true },
     { href: "/dashboard/settings", labelKey: "settings", icon: <GearIcon /> },
   ];
+  const navItems = allNavItems.filter((item) => {
+    if (item.providerOnly && !isProvider) return false;
+    if (item.patientOnly && isProvider) return false;
+    return true;
+  });
 
   const isActive = (href: string) =>
     href === "/dashboard"
