@@ -210,21 +210,37 @@ export function cancelLocalBooking(id: string): void {
 
 // ── Bookings ─────────────────────────────────────────────────────────────────
 
-// The Go Appointment struct has no json tags so the body keys must be PascalCase.
+// Go Appointment model (no json tags → PascalCase in responses)
+export interface BackendAppointment {
+  ID: number;
+  PatientID: number;
+  ProviderID: number;
+  OrganizationID: number;
+  StartTime: string;
+  EndTime: string;
+  Status: "pending" | "confirmed" | "cancelled" | "completed";
+  Notes: string;
+  CreatedAt: string;
+  UpdatedAt: string;
+  Organization?: { ID: number; Name: string };
+  Patient?: { ID: number; Username: string; Email: string };
+}
+
+// CreateBooking — body uses snake_case json tags defined in the handler struct.
 export async function apiCreateBooking(
+  patientId: number,
   organizationId: number,
+  providerId: number,
   startTime: string,
-  endTime: string,
-  notes?: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await apiFetch("/bookings", {
       method: "POST",
       body: JSON.stringify({
-        OrganizationID: organizationId,
-        StartTime: startTime,
-        EndTime: endTime,
-        Notes: notes ?? "",
+        patient_id: patientId,
+        provider_id: providerId,
+        organization_id: organizationId,
+        start_time: startTime,
       }),
     });
     if (!res.ok) {
@@ -237,7 +253,65 @@ export async function apiCreateBooking(
   }
 }
 
+// GetAppointments — returns all appointments for the logged-in user (filtered by role server-side).
+export async function apiGetAppointments(): Promise<{
+  ok: boolean;
+  appointments?: BackendAppointment[];
+  error?: string;
+}> {
+  try {
+    const res = await apiFetch("/appointments");
+    if (!res.ok) return { ok: false, error: "Failed to load appointments." };
+    const data = await res.json() as { appointments: BackendAppointment[] };
+    return { ok: true, appointments: data.appointments ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
 // ── AI Chat ──────────────────────────────────────────────────────────────────
+
+export interface SessionSummary {
+  session_seq: number;
+  status: "in_progress" | "completed";
+  created_at: string;
+  updated_at: string;
+}
+
+interface LangChainMessage {
+  type: "ai" | "human";
+  data: { content: string; id?: string };
+}
+
+export async function apiGetSessionHistory(sessionSeq: number): Promise<{
+  ok: boolean;
+  history?: LangChainMessage[];
+  error?: string;
+}> {
+  try {
+    const res = await apiFetch(`/chat/sessions/${sessionSeq}/history`);
+    if (!res.ok) return { ok: false, error: "Failed to load history." };
+    const data = await res.json() as { session_seq: string; history: LangChainMessage[] };
+    return { ok: true, history: data.history ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+export async function apiGetSessions(): Promise<{
+  ok: boolean;
+  sessions?: SessionSummary[];
+  error?: string;
+}> {
+  try {
+    const res = await apiFetch("/chat/sessions");
+    if (!res.ok) return { ok: false, error: "Failed to load sessions." };
+    const data = await res.json() as { sessions: SessionSummary[] };
+    return { ok: true, sessions: data.sessions ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
 
 // Calls Go backend POST /chat/start — requires JWT (handled by apiFetch).
 // Returns the numeric session_seq assigned by the backend.

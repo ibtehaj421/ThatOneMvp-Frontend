@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocale } from "../../_components/providers/LocaleProvider";
 import { useAuth } from "../../_components/providers/AuthProvider";
-import { apiStartSession, apiSendMessage, apiExportSession } from "../../_lib/api";
+import { apiStartSession, apiSendMessage, apiExportSession, apiGetSessions, apiGetSessionHistory, SessionSummary } from "../../_lib/api";
 
 interface Message {
   id: string;
@@ -12,13 +12,6 @@ interface Message {
   time: string;
 }
 
-interface Conversation {
-  id: string;
-  title: string;
-  preview: string;
-  timestamp: string;
-  unread: number;
-}
 
 const INITIAL_GREETING = "How are we feeling today?";
 
@@ -44,8 +37,11 @@ function PlusIcon() {
 export default function ChatPage() {
   const { t } = useLocale();
   const { user } = useAuth();
-  const [activeConv, setActiveConv] = useState<string | null>(null);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConv, setActiveConv] = useState<number | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [modal, setModal] = useState<{ open: boolean; loading: boolean; text: string; seq: number | null }>({
+    open: false, loading: false, text: "", seq: null,
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionSeq, setSessionSeq] = useState<number | null>(null);
   const [isComplete, setIsComplete] = useState(false);
@@ -54,9 +50,8 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Start a session on first load
   useEffect(() => {
-    startNewSession();
+    fetchSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -64,40 +59,59 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinking]);
 
+  const fetchSessions = async () => {
+    const result = await apiGetSessions();
+    if (result.ok && result.sessions) setSessions(result.sessions);
+  };
+
+  const loadSession = async (s: SessionSummary) => {
+    if (activeConv === s.session_seq) return; // already viewing it
+    setThinking(true);
+    setMessages([]);
+    setActiveConv(s.session_seq);
+    setSessionSeq(s.session_seq);
+    setIsComplete(s.status === "completed");
+
+    const result = await apiGetSessionHistory(s.session_seq);
+    if (result.ok && result.history) {
+      const mapped = result.history.map((m, i) => ({
+        id: m.data.id ?? `h${i}`,
+        role: m.type === "human" ? "user" as const : "assistant" as const,
+        content: m.data.content,
+        time: "",
+      }));
+      setMessages(mapped);
+    }
+    setThinking(false);
+  };
+
   const startNewSession = async () => {
-    const convId = `conv-${Date.now()}`;
-    setActiveConv(convId);
     setMessages([]);
     setSessionSeq(null);
     setIsComplete(false);
     setThinking(true);
 
     const result = await apiStartSession();
-    setSessionSeq(result.ok && result.session_seq != null ? result.session_seq : null);
+    const seq = result.ok && result.session_seq != null ? result.session_seq : null;
+    setSessionSeq(seq);
+    setActiveConv(seq);
     setThinking(false);
 
     // The frontend always initiates with this greeting — the model does not send one.
-    const greetMsg: Message = {
+    setMessages([{
       id: `m${Date.now()}`,
       role: "assistant",
       content: INITIAL_GREETING,
       time: formatTime(),
-    };
-    setMessages([greetMsg]);
+    }]);
 
-    const newConv: Conversation = {
-      id: convId,
-      title: "New Conversation",
-      preview: INITIAL_GREETING,
-      timestamp: formatTime(),
-      unread: 0,
-    };
-    setConversations((prev) => [newConv, ...prev]);
+    // Refresh sidebar to show the new session
+    fetchSessions();
   };
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || thinking || isComplete) return;
+    if (!text || thinking || isComplete || isViewingPast) return;
 
     const userMsg: Message = {
       id: `m${Date.now()}`,
@@ -108,14 +122,6 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setThinking(true);
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConv
-          ? { ...c, title: text.slice(0, 40) || c.title, preview: text.slice(0, 50), timestamp: formatTime() }
-          : c
-      )
-    );
 
     let reply = "";
     let complete = false;
@@ -141,21 +147,31 @@ export default function ChatPage() {
 
     if (complete) {
       setIsComplete(true);
+      fetchSessions(); // refresh sidebar status to "completed"
     }
   };
 
-  const handleExport = async () => {
-    if (sessionSeq == null) return;
-    const result = await apiExportSession(sessionSeq);
-    if (!result.ok || !result.text) return;
-    const blob = new Blob([result.text], { type: "text/plain" });
+  const openSummaryModal = async (seq: number) => {
+    setModal({ open: true, loading: true, text: "", seq });
+    const result = await apiExportSession(seq);
+    setModal({ open: true, loading: false, text: result.text ?? "Failed to load summary.", seq });
+  };
+
+  const closeModal = () => setModal({ open: false, loading: false, text: "", seq: null });
+
+  const downloadSummary = () => {
+    if (!modal.text || modal.seq == null) return;
+    const blob = new Blob([modal.text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `intake-history-session-${sessionSeq}.txt`;
+    a.download = `intake-history-session-${modal.seq}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // True when viewing a past session that is not the one currently being chatted
+  const isViewingPast = activeConv !== sessionSeq;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -168,7 +184,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full">
-      {/* ── Conversation list ── */}
+      {/* ── Session list ── */}
       <aside className="hidden md:flex w-64 flex-col border-r border-[#e7e5e4] bg-white shrink-0">
         <div className="p-3 border-b border-[#e7e5e4]">
           <button
@@ -182,35 +198,45 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          <p className="px-3 py-1.5 text-[11px] font-semibold text-ink3 uppercase tracking-wider">{t.chat.today}</p>
-          {conversations.length === 0 ? (
-            <p className="px-3 py-4 text-xs text-ink3 text-center">No conversations yet</p>
+          <p className="px-3 py-1.5 text-[11px] font-semibold text-ink3 uppercase tracking-wider">Sessions</p>
+          {sessions.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-ink3 text-center">No sessions yet</p>
           ) : (
-            conversations.map((conv) => (
-              <button
-                key={conv.id}
-                onClick={() => setActiveConv(conv.id)}
+            sessions.map((s) => (
+              <div
+                key={s.session_seq}
+                onClick={() => loadSession(s)}
                 className={[
-                  "w-full text-left px-3 py-3 mx-1 rounded-xl transition-colors",
-                  activeConv === conv.id ? "bg-orange-50" : "hover:bg-bg2",
+                  "mx-1 mb-1 rounded-xl px-3 py-2.5 transition-colors cursor-pointer",
+                  activeConv === s.session_seq ? "bg-orange-50" : "hover:bg-bg2",
                 ].join(" ")}
                 style={{ width: "calc(100% - 8px)" }}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <p className={`text-sm font-medium truncate ${activeConv === conv.id ? "text-accent" : "text-ink"}`}>
-                    {conv.title}
+                <div className="flex items-center justify-between gap-2">
+                  <p className={`text-sm font-medium truncate ${activeConv === s.session_seq ? "text-accent" : "text-ink"}`}>
+                    Session #{s.session_seq}
                   </p>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-[10px] text-ink3">{conv.timestamp}</span>
-                    {conv.unread > 0 && (
-                      <span className="w-4 h-4 rounded-full bg-accent text-white text-[9px] flex items-center justify-center font-bold">
-                        {conv.unread}
-                      </span>
-                    )}
-                  </div>
+                  <span className={[
+                    "text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0",
+                    s.status === "completed"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-amber-100 text-amber-700",
+                  ].join(" ")}>
+                    {s.status === "completed" ? "Done" : "Active"}
+                  </span>
                 </div>
-                <p className="text-xs text-ink3 truncate mt-0.5">{conv.preview}</p>
-              </button>
+                <p className="text-[10px] text-ink3 mt-0.5">
+                  {new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </p>
+                {s.status === "completed" && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openSummaryModal(s.session_seq); }}
+                    className="mt-1.5 text-[11px] font-medium text-accent hover:underline"
+                  >
+                    View Summary →
+                  </button>
+                )}
+              </div>
             ))
           )}
         </div>
@@ -236,6 +262,12 @@ export default function ChatPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {messages.length === 0 && !thinking && (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
+              <p className="text-sm font-medium text-ink">No session selected</p>
+              <p className="text-xs text-ink3">Start a new conversation or select a past session from the sidebar.</p>
+            </div>
+          )}
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -296,15 +328,15 @@ export default function ChatPage() {
           <p className="text-[11px] text-amber-700 text-center">{t.chat.disclaimer}</p>
         </div>
 
-        {/* Session complete banner + export */}
+        {/* Session complete banner */}
         {isComplete && (
           <div className="px-4 py-2 bg-green-50 border-t border-green-100 flex items-center justify-between gap-3">
             <p className="text-[12px] text-green-700">History taking complete. Your intake summary is ready.</p>
             <button
-              onClick={handleExport}
+              onClick={() => sessionSeq != null && openSummaryModal(sessionSeq)}
               className="text-[12px] font-medium text-green-800 underline underline-offset-2 hover:text-green-600 shrink-0"
             >
-              Download summary
+              View Summary
             </button>
           </div>
         )}
@@ -317,15 +349,15 @@ export default function ChatPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isComplete ? "This session is complete." : t.chat.placeholder}
+              placeholder={isComplete || isViewingPast ? "Read-only — start a new conversation to chat." : t.chat.placeholder}
               rows={1}
-              disabled={isComplete}
+              disabled={isComplete || isViewingPast}
               className="flex-1 resize-none bg-transparent text-sm text-ink placeholder:text-ink3 outline-none max-h-32 leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ minHeight: "24px" }}
             />
             <button
               onClick={sendMessage}
-              disabled={!input.trim() || thinking || isComplete}
+              disabled={!input.trim() || thinking || isComplete || isViewingPast}
               className="h-8 w-8 rounded-xl bg-accent text-white flex items-center justify-center hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
               <SendIcon />
@@ -333,6 +365,51 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Clinical Summary Modal ── */}
+      {modal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7e5e4] shrink-0">
+              <div>
+                <p className="text-sm font-semibold text-ink">Clinical Intake Summary</p>
+                {modal.seq != null && (
+                  <p className="text-[11px] text-ink3">Session #{modal.seq}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={downloadSummary}
+                  disabled={modal.loading}
+                  className="text-[12px] font-medium px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40"
+                >
+                  Download .txt
+                </button>
+                <button
+                  onClick={closeModal}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-ink3 hover:bg-bg2 transition-colors text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {modal.loading ? (
+                <div className="flex items-center justify-center h-32 gap-2">
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} className="w-2 h-2 rounded-full bg-ink3 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+                  ))}
+                </div>
+              ) : (
+                <pre className="text-xs text-ink font-mono whitespace-pre-wrap leading-relaxed">{modal.text}</pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
