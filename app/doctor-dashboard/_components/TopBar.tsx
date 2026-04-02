@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "./providers/LocaleProvider";
+import { useLocale } from "../../_components/providers/LocaleProvider";
 
 function HamburgerIcon() {
   return (
@@ -19,6 +19,7 @@ function HamburgerIcon() {
     </svg>
   );
 }
+
 function BellIcon() {
   return (
     <svg
@@ -36,6 +37,7 @@ function BellIcon() {
     </svg>
   );
 }
+
 function GlobeIcon() {
   return (
     <svg
@@ -66,7 +68,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
 
   return (
     <header className="h-16 flex items-center justify-between px-4 bg-white border-b border-[#e7e5e4] shrink-0 lg:px-6">
-      {/* Left: hamburger + title */}
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
@@ -82,9 +83,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
         )}
       </div>
 
-      {/* Right: locale toggle + notification bell */}
       <div className="flex items-center gap-1">
-        {/* Locale toggle */}
         <button
           onClick={toggleLocale}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-ink2 hover:bg-bg2 hover:text-ink transition-colors"
@@ -96,10 +95,8 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </span>
         </button>
 
-        {/* Notifications */}
         <button className="relative p-2 rounded-lg text-ink3 hover:bg-bg2 hover:text-ink transition-colors">
           <BellIcon />
-          {/* Notification dot */}
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full" />
         </button>
       </div>

@@ -1,26 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../_components/providers/AuthProvider";
-import { Sidebar } from "../_components/Sidebar";
-import { TopBar } from "../_components/TopBar";
 import { useLocale } from "../_components/providers/LocaleProvider";
-import { usePathname } from "next/navigation";
+import { Sidebar } from "./_components/Sidebar";
+import { TopBar } from "./_components/TopBar";
 
 function getPageTitle(pathname: string, t: ReturnType<typeof useLocale>["t"]) {
-  if (pathname === "/dashboard") return t.dashboard.overview;
-  if (pathname.startsWith("/dashboard/provider/patients")) return t.nav.patients;
-  if (pathname.startsWith("/dashboard/provider")) return t.nav.provider_dashboard;
-  if (pathname.startsWith("/dashboard/chat")) return t.chat.title;
-  if (pathname.startsWith("/dashboard/booking")) return t.booking.title;
-  if (pathname.startsWith("/dashboard/documents")) return t.documents.title;
-  if (pathname.startsWith("/dashboard/family")) return t.family.title;
-  if (pathname.startsWith("/dashboard/settings")) return t.settings.title;
-  return "ANAM-AI";
+  if (pathname === "/doctor-dashboard") return t.doctor.overview;
+  if (pathname.startsWith("/doctor-dashboard/appointments"))
+    return t.doctor.appointments;
+  if (pathname.startsWith("/doctor-dashboard/patients"))
+    return t.doctor.patients;
+  if (pathname.startsWith("/doctor-dashboard/messages"))
+    return t.doctor.messages;
+  if (pathname.startsWith("/doctor-dashboard/reports")) return t.doctor.reports;
+  if (pathname.startsWith("/doctor-dashboard/settings"))
+    return t.doctor.settings;
+  return t.doctor.title;
 }
 
-export default function DashboardLayout({
+export default function DoctorDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -32,14 +33,14 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && user?.accountType === "doctor") {
-      router.replace("/doctor-dashboard");
-    } else if (!isLoading && !user) {
+    if (!isLoading && !user) {
       router.replace("/auth/login");
+    } else if (!isLoading && user?.accountType !== "doctor") {
+      router.replace("/dashboard");
     }
   }, [user, isLoading, router]);
 
-  if (isLoading || !user) {
+  if (isLoading || !user || user.accountType !== "doctor") {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -68,10 +69,9 @@ export default function DashboardLayout({
     <div className="h-screen flex overflow-hidden bg-bg">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar
-          onMenuClick={() => setSidebarOpen((o) => !o)}
+          onMenuClick={() => setSidebarOpen((open) => !open)}
           title={pageTitle}
         />
         <main className="flex-1 overflow-y-auto">{children}</main>

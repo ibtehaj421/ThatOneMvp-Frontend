@@ -60,12 +60,13 @@ export interface BackendProfile {
 export async function apiRegister(
   username: string,
   email: string,
-  password: string
+  password: string,
+  role?: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await apiFetch("/register", {
       method: "POST",
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ username, email, password, role }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({})) as { error?: string };

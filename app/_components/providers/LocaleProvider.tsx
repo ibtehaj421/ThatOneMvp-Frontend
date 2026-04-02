@@ -75,6 +75,8 @@ const translations = {
       individual_desc: "Just for you",
       family_head: "Family Plan Head",
       family_head_desc: "Manage up to 5 family members",
+      doctor: "Doctor / Provider",
+      doctor_desc: "Manage consultations, patients, and appointments",
       have_account: "Already have an account?",
       no_account: "Don't have an account?",
       forgot: "Forgot password?",
@@ -84,7 +86,8 @@ const translations = {
       email_placeholder: "you@example.com",
       password_placeholder: "At least 8 characters",
       name_placeholder: "Your full name",
-      terms: "By creating an account you agree to our Terms of Service and Privacy Policy.",
+      terms:
+        "By creating an account you agree to our Terms of Service and Privacy Policy.",
     },
     dashboard: {
       welcome: "Welcome back",
@@ -106,6 +109,36 @@ const translations = {
       low: "Low",
       medium: "Medium",
       high: "High",
+    },
+    doctor: {
+      title: "Doctor Portal",
+      overview: "Overview",
+      appointments: "Appointments",
+      patients: "Patients",
+      messages: "Messages",
+      reports: "Reports",
+      settings: "Settings",
+      greeting: "Good to see you",
+      today: "Today",
+      waiting_room: "Waiting Room",
+      due_followups: "Due Follow-ups",
+      unread_messages: "Unread Messages",
+      urgent_cases: "Urgent Cases",
+      quick_actions: "Quick Actions",
+      todays_queue: "Today's Queue",
+      patient_overview: "Patient Overview",
+      availability: "Availability",
+      risk_flags: "Risk Flags",
+      start_consult: "Start Consult",
+      review_labs: "Review Labs",
+      issue_rx: "Issue Prescription",
+      add_note: "Add Note",
+      no_patients: "No patients waiting right now",
+      my_schedule: "My Schedule",
+      mark_complete: "Mark Complete",
+      appointment_summary: "Appointment Summary",
+      online: "Online",
+      on_duty: "On Duty",
     },
     chat: {
       title: "Health Assistant",
@@ -243,8 +276,7 @@ const translations = {
       feat3_desc:
         "آپ کی تمام طبی تاریخ، ٹیسٹ کے نتائج، اور نسخے ایک محفوظ جگہ پر۔",
       feat4_title: "خاندانی صحت مرکز",
-      feat4_desc:
-        "ایک پلان کے تحت اپنے پورے خاندان کی صحت کا انتظام کریں۔",
+      feat4_desc: "ایک پلان کے تحت اپنے پورے خاندان کی صحت کا انتظام کریں۔",
       how_title: "یہ کیسے کام کرتا ہے",
       step1_title: "اپنا اکاؤنٹ بنائیں",
       step1_desc: "ایک منٹ سے کم میں سائن اپ کریں۔",
@@ -271,6 +303,8 @@ const translations = {
       individual_desc: "صرف آپ کے لیے",
       family_head: "خاندانی پلان سربراہ",
       family_head_desc: "5 تک خاندانی اراکین کا انتظام",
+      doctor: "ڈاکٹر / فراہم کنندہ",
+      doctor_desc: "مشاورت، مریضوں، اور ملاقاتوں کا انتظام",
       have_account: "پہلے سے اکاؤنٹ ہے؟",
       no_account: "اکاؤنٹ نہیں ہے؟",
       forgot: "پاس ورڈ بھول گئے؟",
@@ -302,6 +336,36 @@ const translations = {
       low: "کم",
       medium: "درمیانہ",
       high: "زیادہ",
+    },
+    doctor: {
+      title: "ڈاکٹر پورٹل",
+      overview: "جائزہ",
+      appointments: "ملاقاتیں",
+      patients: "مریض",
+      messages: "پیغامات",
+      reports: "رپورٹس",
+      settings: "ترتیبات",
+      greeting: "آپ کو دیکھ کر خوشی ہوئی",
+      today: "آج",
+      waiting_room: "انتظار گاہ",
+      due_followups: "فالو اپ",
+      unread_messages: "غیر پڑھے پیغامات",
+      urgent_cases: "فوری کیسز",
+      quick_actions: "فوری اقدامات",
+      todays_queue: "آج کی قطار",
+      patient_overview: "مریض کا جائزہ",
+      availability: "دستیابی",
+      risk_flags: "خطرے کے اشارے",
+      start_consult: "مشاورت شروع کریں",
+      review_labs: "لیب دیکھیں",
+      issue_rx: "نسخہ جاری کریں",
+      add_note: "نوٹ شامل کریں",
+      no_patients: "اس وقت کوئی مریض انتظار میں نہیں",
+      my_schedule: "میرا شیڈول",
+      mark_complete: "مکمل کریں",
+      appointment_summary: "ملاقات کا خلاصہ",
+      online: "آن لائن",
+      on_duty: "ڈیوٹی پر",
     },
     chat: {
       title: "صحت معاون",
@@ -420,8 +484,12 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("en");
 
   useEffect(() => {
-    const saved = localStorage.getItem("anam-locale") as Locale | null;
-    if (saved === "en" || saved === "ur") setLocaleState(saved);
+    const timeoutId = window.setTimeout(() => {
+      const saved = localStorage.getItem("anam-locale") as Locale | null;
+      if (saved === "en" || saved === "ur") setLocaleState(saved);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   const setLocale = (l: Locale) => {

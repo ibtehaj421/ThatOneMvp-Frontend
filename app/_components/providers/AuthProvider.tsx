@@ -17,7 +17,11 @@ import {
   BackendProfile,
 } from "../../_lib/api";
 
-export type AccountType = "individual" | "family-head" | "family-member";
+export type AccountType =
+  | "individual"
+  | "family-head"
+  | "family-member"
+  | "doctor";
 
 export interface FamilyMember {
   id: string;
@@ -35,6 +39,7 @@ export interface User {
   phone?: string;
   dob?: string;
   gender?: string;
+  specialty?: string;
   accountType: AccountType;
   role?: "patient" | "provider" | "admin";
   familyId?: string;
@@ -52,11 +57,16 @@ export interface RegisterData {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  register: (data: RegisterData) => Promise<{ ok: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ ok: boolean; error?: string; user?: User }>;
+  register: (data: RegisterData) => Promise<{ ok: boolean; error?: string; user?: User }>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
-  inviteFamilyMember: (email: string) => Promise<{ ok: boolean; error?: string }>;
+  inviteFamilyMember: (
+    email: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
   removeFamilyMember: (memberId: string) => void;
 }
 
@@ -114,6 +124,15 @@ function seedDemoAccounts() {
       createdAt: new Date().toISOString(),
       password: "family123",
     },
+    {
+      id: "demo-3",
+      name: "Dr. Amina Rahman",
+      email: "doctor@anam-ai.com",
+      accountType: "doctor",
+      specialty: "Internal Medicine",
+      createdAt: new Date().toISOString(),
+      password: "doctor123",
+    },
   ];
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(demos));
@@ -129,6 +148,22 @@ function getStoredUsers(): Array<User & { password: string }> {
 
 function saveUsers(users: Array<User & { password: string }>) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+}
+
+function stripPassword(user: User & { password: string }): User {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    dob: user.dob,
+    gender: user.gender,
+    specialty: user.specialty,
+    accountType: user.accountType,
+    familyId: user.familyId,
+    familyMembers: user.familyMembers,
+    createdAt: user.createdAt,
+  };
 }
 
 function getSession(): string | null {
@@ -149,7 +184,7 @@ function profileToUser(profile: BackendProfile): User {
     id: String(profile.ID),
     name: profile.Username,
     email: profile.Email,
-    accountType: "individual",
+    accountType: role === "provider" || role === "admin" ? "doctor" : "individual",
     role,
     createdAt: profile.CreatedAt,
   };
@@ -193,16 +228,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (
     email: string,
-    password: string
-  ): Promise<{ ok: boolean; error?: string }> => {
+    password: string,
+  ): Promise<{ ok: boolean; error?: string; user?: User }> => {
     // Try backend first.
     const backendResult = await apiLogin(email, password);
 
     if (backendResult.ok) {
       const profileResult = await apiGetProfile();
       if (profileResult.ok && profileResult.profile) {
-        setUser(profileToUser(profileResult.profile));
-        return { ok: true };
+        const nextUser = profileToUser(profileResult.profile);
+        setUser(nextUser);
+        return { ok: true, user: nextUser };
       }
       return { ok: false, error: "Could not load profile after login." };
     }
@@ -215,22 +251,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Server unreachable — fall back to demo accounts in localStorage.
     const users = getStoredUsers();
     const found = users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      (u) =>
+        u.email.toLowerCase() === email.toLowerCase() &&
+        u.password === password,
     );
     if (!found) {
       return { ok: false, error: "Invalid email or password." };
     }
-    const { password: _pw, ...rest } = found;
-    setUser(rest);
+    const nextUser = stripPassword(found);
+    setUser(nextUser);
     saveSession(found.id);
-    return { ok: true };
+    return { ok: true, user: nextUser };
   };
 
   const register = async (
-    data: RegisterData
-  ): Promise<{ ok: boolean; error?: string }> => {
+    data: RegisterData,
+  ): Promise<{ ok: boolean; error?: string; user?: User }> => {
     // Register on the backend.
-    const regResult = await apiRegister(data.name, data.email, data.password);
+    const regResult = await apiRegister(
+      data.name,
+      data.email,
+      data.password,
+      data.accountType === "doctor" ? "provider" : undefined,
+    );
     if (!regResult.ok) {
       return { ok: false, error: regResult.error };
     }
@@ -243,9 +286,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const profileResult = await apiGetProfile();
     if (profileResult.ok && profileResult.profile) {
-      setUser(profileToUser(profileResult.profile));
+      const nextUser = profileToUser(profileResult.profile);
+      setUser(nextUser);
+      return { ok: true, user: nextUser };
     }
-    return { ok: true };
+    return {
+      ok: true,
+      user: {
+        id: "pending",
+        name: data.name,
+        email: data.email,
+        accountType: data.accountType,
+        createdAt: new Date().toISOString(),
+      },
+    };
   };
 
   const logout = async () => {
@@ -271,7 +325,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const inviteFamilyMember = async (
-    email: string
+    email: string,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!user || user.accountType !== "family-head") {
       return { ok: false, error: "Only family plan heads can invite members." };
@@ -299,7 +353,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const removeFamilyMember = (memberId: string) => {
     if (!user) return;
     const updatedMembers = (user.familyMembers ?? []).filter(
-      (m) => m.id !== memberId
+      (m) => m.id !== memberId,
     );
     updateUser({ familyMembers: updatedMembers });
   };

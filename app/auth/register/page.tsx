@@ -39,9 +39,7 @@ function RadioCard({
             selected ? "border-accent" : "border-[#d4d0ce]",
           ].join(" ")}
         >
-          {selected && (
-            <div className="w-2 h-2 rounded-full bg-accent" />
-          )}
+          {selected && <div className="w-2 h-2 rounded-full bg-accent" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -82,7 +80,11 @@ export default function RegisterPage() {
     const result = await register({ name, email, password, accountType });
     setLoading(false);
     if (result.ok) {
-      router.push("/dashboard");
+      router.push(
+        result.user?.accountType === "doctor"
+          ? "/doctor-dashboard"
+          : "/dashboard",
+      );
     } else {
       setError(result.error ?? "Something went wrong.");
     }
@@ -93,15 +95,30 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2.5 justify-center">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2.5 justify-center"
+          >
             <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+              <svg
+                className="w-5 h-5 text-white"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
-            <span className="font-bold text-xl text-ink tracking-tight">ANAM-AI</span>
+            <span className="font-bold text-xl text-ink tracking-tight">
+              ANAM-AI
+            </span>
           </Link>
-          <h1 className="mt-5 text-2xl font-bold text-ink">{t.auth.register}</h1>
+          <h1 className="mt-5 text-2xl font-bold text-ink">
+            {t.auth.register}
+          </h1>
           <p className="mt-1 text-sm text-ink3">{t.auth.register_sub}</p>
         </div>
 
@@ -140,7 +157,9 @@ export default function RegisterPage() {
 
             {/* Account type */}
             <div className="space-y-2">
-              <p className="text-sm font-medium text-ink2">{t.auth.account_type}</p>
+              <p className="text-sm font-medium text-ink2">
+                {t.auth.account_type}
+              </p>
               <div className="space-y-2">
                 <RadioCard
                   selected={accountType === "individual"}
@@ -154,6 +173,13 @@ export default function RegisterPage() {
                   title={t.auth.family_head}
                   description={t.auth.family_head_desc}
                   badge="FAMILY"
+                />
+                <RadioCard
+                  selected={accountType === "doctor"}
+                  onClick={() => setAccountType("doctor")}
+                  title={t.auth.doctor}
+                  description={t.auth.doctor_desc}
+                  badge="DOCTOR"
                 />
               </div>
             </div>
@@ -176,7 +202,10 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-ink3 mt-5">
           {t.auth.have_account}{" "}
-          <Link href="/auth/login" className="text-accent font-medium hover:underline">
+          <Link
+            href="/auth/login"
+            className="text-accent font-medium hover:underline"
+          >
             {t.auth.sign_in}
           </Link>
         </p>
