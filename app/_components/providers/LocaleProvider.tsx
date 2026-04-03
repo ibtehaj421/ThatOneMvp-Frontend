@@ -139,6 +139,7 @@ const translations = {
       appointment_summary: "Appointment Summary",
       online: "Online",
       on_duty: "On Duty",
+      organization: "Organization",
     },
     chat: {
       title: "Health Assistant",
@@ -366,6 +367,7 @@ const translations = {
       appointment_summary: "ملاقات کا خلاصہ",
       online: "آن لائن",
       on_duty: "ڈیوٹی پر",
+      organization: "تنظیم",
     },
     chat: {
       title: "صحت معاون",

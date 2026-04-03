@@ -208,6 +208,79 @@ export function cancelLocalBooking(id: string): void {
   localStorage.setItem(BOOKINGS_KEY, JSON.stringify(all));
 }
 
+// ── Organizations & Providers ────────────────────────────────────────────────
+
+// No json tags on Go model → PascalCase field names in responses
+export interface BackendOrganization {
+  ID: number;
+  Name: string;
+  Latitude: number;
+  Longitude: number;
+  CustomerSupportEmail: string;
+  OwnerEmail: string;
+  CreatedAt: string;
+}
+
+// GetNearbyOrganizations — pass lat/lng/radius for distance filter, or omit for all.
+export async function apiGetOrganizations(params?: {
+  lat?: number; lng?: number; radius?: number;
+}): Promise<{ ok: boolean; organizations?: BackendOrganization[]; error?: string }> {
+  try {
+    const qs = params?.lat != null && params?.lng != null && params?.radius != null
+      ? `?lat=${params.lat}&lng=${params.lng}&radius=${params.radius}`
+      : "";
+    const res = await apiFetch(`/organizations${qs}`);
+    if (!res.ok) return { ok: false, error: "Failed to fetch clinics." };
+    const data = await res.json() as { organizations: BackendOrganization[] };
+    return { ok: true, organizations: data.organizations ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// RegisterOrganization body binds to models.Organization — Go JSON is case-insensitive
+// so PascalCase keys are used for safety.
+export async function apiRegisterOrganization(data: {
+  Name: string;
+  CustomerSupportEmail?: string;
+  Latitude?: number;
+  Longitude?: number;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch("/organizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      return { ok: false, error: d.error ?? "Failed to register clinic." };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// Provider response uses explicit json tags in the handler struct (PascalCase)
+export interface BackendProvider {
+  ID: number;
+  Username: string;
+  Email: string;
+}
+
+export async function apiGetProviders(): Promise<{
+  ok: boolean; providers?: BackendProvider[]; error?: string;
+}> {
+  try {
+    const res = await apiFetch("/providers");
+    if (!res.ok) return { ok: false, error: "Failed to fetch providers." };
+    const data = await res.json() as { providers: BackendProvider[] };
+    return { ok: true, providers: data.providers ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
 // ── Bookings ─────────────────────────────────────────────────────────────────
 
 // Go Appointment model (no json tags → PascalCase in responses)
