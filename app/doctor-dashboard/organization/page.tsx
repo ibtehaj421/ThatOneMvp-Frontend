@@ -1,20 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "../../_components/providers/AuthProvider";
 import {
   apiRegisterOrganization,
-  apiGetOrganizations,
-  apiGetProfile,
+  apiGetMyOrganizations,
   type BackendOrganization,
 } from "../../_lib/api";
 
 export default function OrganizationPage() {
-  const { user } = useAuth();
-
   const [myOrgs, setMyOrgs] = useState<BackendOrganization[]>([]);
   const [loading, setLoading] = useState(true);
-  const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
 
   // Form state
   const [name, setName] = useState("");
@@ -25,25 +20,17 @@ export default function OrganizationPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  useEffect(() => {
-    apiGetProfile().then((r) => {
-      if (r.ok && r.profile) setOwnerEmail(r.profile.Email);
-    });
-  }, []);
-
   const fetchMyOrgs = async () => {
     setLoading(true);
-    const result = await apiGetOrganizations();
-    if (result.ok && result.organizations && ownerEmail) {
-      setMyOrgs(result.organizations.filter((o) => o.OwnerEmail === ownerEmail));
-    }
+    const result = await apiGetMyOrganizations();
+    if (result.ok && result.organizations) setMyOrgs(result.organizations);
     setLoading(false);
   };
 
   useEffect(() => {
-    if (ownerEmail) fetchMyOrgs();
+    fetchMyOrgs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerEmail]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

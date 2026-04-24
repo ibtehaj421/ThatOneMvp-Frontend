@@ -14,7 +14,6 @@ import {
   type BackendProvider,
 } from "../../_lib/api";
 
-const AVAILABLE_SLOTS = ["9:00 AM", "9:30 AM", "10:00 AM", "11:30 AM", "2:00 PM", "3:00 PM", "4:30 PM"];
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -145,12 +144,8 @@ export default function BookingPage() {
     if (!selectedDay || !selectedSlot || !selectedOrg || !selectedProvider || patientId == null) return;
     setErrorMsg("");
 
-    const [timePart, meridiem] = selectedSlot.split(" ");
-    const [rawHour, rawMin] = timePart.split(":").map(Number);
-    let hour = rawHour;
-    if (meridiem === "PM" && hour !== 12) hour += 12;
-    if (meridiem === "AM" && hour === 12) hour = 0;
-    const start = new Date(year, month, selectedDay, hour, rawMin ?? 0);
+    const [rawHour, rawMin] = selectedSlot.split(":").map(Number);
+    const start = new Date(year, month, selectedDay, rawHour, rawMin ?? 0);
 
     setBooking(true);
     const result = await apiCreateBooking(patientId, selectedOrg.ID, selectedProvider.ID, start.toISOString());
@@ -354,21 +349,18 @@ export default function BookingPage() {
               <Calendar year={year} month={month} selected={selectedDay} onSelect={setSelectedDay} />
             </div>
 
-            {/* Time slots */}
+            {/* Time input */}
             <div className="bg-white rounded-2xl border border-[#e7e5e4] p-5">
               <p className="text-sm font-semibold text-ink2 mb-3">
-                {selectedDay ? `Available Slots — ${MONTHS[month]} ${selectedDay}` : "Select a date to see slots"}
+                {selectedDay ? `Select Time — ${MONTHS[month]} ${selectedDay}` : "Select a date first"}
               </p>
               {selectedDay ? (
-                <div className="grid grid-cols-3 gap-2">
-                  {AVAILABLE_SLOTS.map((slot) => (
-                    <button key={slot} onClick={() => setSelectedSlot(slot)}
-                      className={["h-9 rounded-xl text-xs font-medium transition-colors",
-                        selectedSlot === slot ? "bg-accent text-white" : "border border-[#e7e5e4] text-ink2 hover:border-accent hover:text-accent",
-                      ].join(" ")}
-                    >{slot}</button>
-                  ))}
-                </div>
+                <input
+                  type="time"
+                  value={selectedSlot ?? ""}
+                  onChange={(e) => setSelectedSlot(e.target.value || null)}
+                  className="w-full h-10 rounded-xl border border-[#e7e5e4] px-3 text-sm text-ink focus:outline-none focus:border-accent"
+                />
               ) : (
                 <p className="text-xs text-ink3 text-center py-4">← Select a date on the calendar</p>
               )}

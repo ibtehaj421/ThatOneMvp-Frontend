@@ -112,23 +112,6 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Demo hint */}
-        <div className="mt-4 rounded-xl bg-orange-50 border border-orange-100 px-4 py-3">
-          <p className="text-xs text-ink2 font-medium mb-1">Demo accounts</p>
-          <p className="text-xs text-ink3">
-            Individual: <span className="font-mono">demo@anam-ai.com</span> /{" "}
-            <span className="font-mono">password123</span>
-          </p>
-          <p className="text-xs text-ink3">
-            Family head: <span className="font-mono">family@anam-ai.com</span> /{" "}
-            <span className="font-mono">family123</span>
-          </p>
-          <p className="text-xs text-ink3">
-            Doctor: <span className="font-mono">doctor@anam-ai.com</span> /{" "}
-            <span className="font-mono">doctor123</span>
-          </p>
-        </div>
-
         <p className="text-center text-sm text-ink3 mt-5">
           {t.auth.no_account}{" "}
           <Link

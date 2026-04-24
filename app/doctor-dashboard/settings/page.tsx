@@ -101,20 +101,6 @@ export default function DoctorSettingsPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-[#e7e5e4] p-5">
-        <p className="text-sm font-semibold text-ink2 mb-3">
-          {t.doctor.availability}
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm text-ink2">
-          <div className="rounded-xl bg-bg2 p-3">
-            Mon-Fri: 9:00 AM - 5:00 PM
-          </div>
-          <div className="rounded-xl bg-bg2 p-3">
-            Telehealth: 6:00 PM - 8:00 PM
-          </div>
-          <div className="rounded-xl bg-bg2 p-3">Break: 1:00 PM - 2:00 PM</div>
-        </div>
-      </div>
     </div>
   );
 }

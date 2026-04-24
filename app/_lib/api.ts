@@ -164,50 +164,6 @@ export async function apiListDocuments(): Promise<{
   }
 }
 
-// ── Local booking store (no GET /bookings endpoint in backend) ───────────────
-
-const BOOKINGS_KEY = "anam-bookings";
-
-export interface LocalBooking {
-  id: string;
-  organizationId: number;
-  startTime: string;
-  endTime: string;
-  notes: string;
-  status: "pending" | "confirmed" | "cancelled";
-  createdAt: string;
-}
-
-export function getLocalBookings(): LocalBooking[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(BOOKINGS_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-}
-
-export function saveLocalBooking(
-  booking: Omit<LocalBooking, "id" | "createdAt">
-): LocalBooking {
-  const newBooking: LocalBooking = {
-    ...booking,
-    id: `b${Date.now()}`,
-    createdAt: new Date().toISOString(),
-  };
-  const all = getLocalBookings();
-  all.unshift(newBooking);
-  localStorage.setItem(BOOKINGS_KEY, JSON.stringify(all));
-  return newBooking;
-}
-
-export function cancelLocalBooking(id: string): void {
-  const all = getLocalBookings().map((b) =>
-    b.id === id ? { ...b, status: "cancelled" as const } : b
-  );
-  localStorage.setItem(BOOKINGS_KEY, JSON.stringify(all));
-}
-
 // ── Organizations & Providers ────────────────────────────────────────────────
 
 // No json tags on Go model → PascalCase field names in responses
@@ -431,6 +387,110 @@ export async function apiExportSession(
     if (!res.ok) return { ok: false, error: "Could not export session." };
     const text = await res.text();
     return { ok: true, text };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// ── Provider-only routes ─────────────────────────────────────────────────────
+
+// GET /my-organizations — returns clinics owned by the logged-in doctor.
+export async function apiGetMyOrganizations(): Promise<{
+  ok: boolean; organizations?: BackendOrganization[]; error?: string;
+}> {
+  try {
+    const res = await apiFetch("/my-organizations");
+    if (!res.ok) return { ok: false, error: "Failed to fetch your organizations." };
+    const data = await res.json() as { organizations: BackendOrganization[] };
+    return { ok: true, organizations: data.organizations ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// GET /organizations/:org_id/appointments — master schedule for a specific clinic.
+export async function apiGetOrgAppointments(orgId: number): Promise<{
+  ok: boolean;
+  organization_id?: string;
+  appointments?: BackendAppointment[];
+  error?: string;
+}> {
+  try {
+    const res = await apiFetch(`/organizations/${orgId}/appointments`);
+    if (!res.ok) return { ok: false, error: "Failed to fetch clinic appointments." };
+    const data = await res.json() as { organization_id: string; appointments: BackendAppointment[] };
+    return { ok: true, organization_id: data.organization_id, appointments: data.appointments ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// Structured CMAS intake data returned by the AI session.
+// Field names use snake_case because CMASState in Go has explicit json tags.
+export interface SymptomSlot {
+  value: string;
+  onset?: string;
+  duration?: string;
+  severity?: string;
+  location?: string;
+  progression?: string;
+  frequency?: string;
+}
+
+export interface AppointmentContext {
+  appointment_details: {
+    appointment_id: number;
+    status: BackendAppointment["Status"];
+    start_time: string;
+    doctor_notes: string;
+  };
+  patient_demographics: {
+    patient_id: number;
+    username: string;
+    email: string;
+  };
+  ai_intake_history: {
+    chief_complaint: string;
+    positive_symptoms: SymptomSlot[];
+    negative_symptoms: SymptomSlot[];
+    patient_medical_history: string[];
+    family_medical_history: string[];
+    medications: string[];
+    habits: Record<string, unknown>;
+    basic_information: Record<string, unknown>;
+  };
+}
+
+// GET /appointments/:appointment_id/context — patient demographics + AI intake for the doctor.
+export async function apiGetAppointmentContext(appointmentId: number): Promise<{
+  ok: boolean; context?: AppointmentContext; error?: string;
+}> {
+  try {
+    const res = await apiFetch(`/appointments/${appointmentId}/context`);
+    if (!res.ok) return { ok: false, error: "Failed to fetch patient context." };
+    const data = await res.json() as AppointmentContext;
+    return { ok: true, context: data };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// PUT /appointments/:appointment_id/notes — save doctor's notes and optionally update status.
+export async function apiUpdateAppointmentNotes(
+  appointmentId: number,
+  notes: string,
+  status?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch(`/appointments/${appointmentId}/notes`, {
+      method: "PUT",
+      body: JSON.stringify({ notes, ...(status ? { status } : {}) }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      return { ok: false, error: data.error ?? "Failed to update notes." };
+    }
+    return { ok: true };
   } catch {
     return { ok: false, error: "Cannot reach server." };
   }
