@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useLocale } from "../../_components/providers/LocaleProvider";
 import { Button } from "../../_components/ui/Button";
+import { AppointmentChat } from "../../_components/AppointmentChat";
 import {
   apiCreateBooking,
   apiGetAppointments,
@@ -84,6 +85,7 @@ export default function BookingPage() {
   const [providers, setProviders] = useState<BackendProvider[]>([]);
   const [appointments, setAppointments] = useState<BackendAppointment[]>([]);
   const [patientId, setPatientId] = useState<number | null>(null);
+  const [patientUsername, setPatientUsername] = useState("");
 
   // Loading
   const [loadingOrgs, setLoadingOrgs] = useState(true);
@@ -105,7 +107,12 @@ export default function BookingPage() {
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    apiGetProfile().then((r) => { if (r.ok && r.profile) setPatientId(r.profile.ID); });
+    apiGetProfile().then((r) => {
+      if (r.ok && r.profile) {
+        setPatientId(r.profile.ID);
+        setPatientUsername(r.profile.Username);
+      }
+    });
 
     setLoadingOrgs(true);
     Promise.all([apiGetOrganizations(), apiGetProviders()]).then(([orgsRes, provsRes]) => {
@@ -386,6 +393,8 @@ export default function BookingPage() {
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             t={t}
+            currentUserId={patientId}
+            currentUsername={patientUsername}
           />
         </div>
       )}
@@ -405,14 +414,18 @@ export default function BookingPage() {
 }
 
 function AppointmentsList({
-  loadingAppts, displayList, activeTab, setActiveTab, t,
+  loadingAppts, displayList, activeTab, setActiveTab, t, currentUserId, currentUsername,
 }: {
   loadingAppts: boolean;
   displayList: BackendAppointment[];
   activeTab: "upcoming" | "past";
   setActiveTab: (v: "upcoming" | "past") => void;
   t: ReturnType<typeof useLocale>["t"];
+  currentUserId: number | null;
+  currentUsername: string;
 }) {
+  const [openChatId, setOpenChatId] = useState<number | null>(null);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex rounded-xl bg-bg2 p-1 gap-1">
@@ -440,24 +453,57 @@ function AppointmentsList({
             const dateStr = start.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
             const timeStr = start.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
             const orgName = appt.Organization?.Name ?? `Organization #${appt.OrganizationID}`;
+            const doctorName = appt.Provider?.Username ?? `Doctor #${appt.ProviderID}`;
+            const isChatOpen = openChatId === appt.ID;
+
             return (
-              <div key={appt.ID} className="bg-white rounded-2xl border border-[#e7e5e4] p-4 flex items-center gap-4">
-                <div className="w-11 h-11 rounded-full bg-accent/10 text-accent flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-ink">{orgName}</p>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-xs text-ink3">{dateStr}</span>
-                    <span className="text-xs text-ink3">{timeStr}</span>
+              <div key={appt.ID} className="bg-white rounded-2xl border border-[#e7e5e4] overflow-hidden">
+                {/* Appointment summary row */}
+                <div className="p-4 flex items-center gap-4">
+                  <div className="w-11 h-11 rounded-full bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
                   </div>
-                  {appt.Notes && <p className="text-xs text-ink3 mt-0.5 truncate">{appt.Notes}</p>}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-ink">{orgName}</p>
+                    <p className="text-xs text-ink3 mt-0.5">Dr. {doctorName}</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-ink3">{dateStr}</span>
+                      <span className="text-xs text-ink3">{timeStr}</span>
+                    </div>
+                    {appt.Notes && <p className="text-xs text-ink3 mt-0.5 truncate italic">{appt.Notes}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${statusColor(appt.Status)}`}>
+                      {appt.Status}
+                    </span>
+                    {appt.Status !== "cancelled" && currentUserId != null && (
+                      <button
+                        onClick={() => setOpenChatId(isChatOpen ? null : appt.ID)}
+                        className={[
+                          "h-7 px-2.5 rounded-xl text-[11px] font-medium transition-colors",
+                          isChatOpen
+                            ? "bg-accent text-white"
+                            : "border border-accent text-accent hover:bg-orange-50",
+                        ].join(" ")}
+                      >
+                        {isChatOpen ? "Close Chat" : "Chat"}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${statusColor(appt.Status)}`}>
-                  {appt.Status}
-                </span>
+
+                {/* Expandable chat panel */}
+                {isChatOpen && currentUserId != null && (
+                  <div className="border-t border-[#e7e5e4] p-3">
+                    <AppointmentChat
+                      appointmentId={appt.ID}
+                      currentUserId={currentUserId}
+                      currentUsername={currentUsername}
+                    />
+                  </div>
+                )}
               </div>
             );
           })

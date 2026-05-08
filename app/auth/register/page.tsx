@@ -66,8 +66,12 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("individual");
+  const [cnic, setCnic] = useState("");
+  const [address, setAddress] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const isPatient = accountType !== "doctor";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,8 +80,12 @@ export default function RegisterPage() {
       setError("Password must be at least 8 characters.");
       return;
     }
+    if (isPatient && !cnic.trim()) {
+      setError("CNIC / National ID is required for patient accounts.");
+      return;
+    }
     setLoading(true);
-    const result = await register({ name, email, password, accountType });
+    const result = await register({ name, email, password, accountType, cnic: cnic.trim(), address: address.trim() });
     setLoading(false);
     if (result.ok) {
       router.push(
@@ -183,6 +191,30 @@ export default function RegisterPage() {
                 />
               </div>
             </div>
+
+            {/* Patient-specific details */}
+            {isPatient && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-ink2 border-t border-[#e7e5e4] pt-3">
+                  {t.auth.patient_details}
+                </p>
+                <Input
+                  label={t.auth.cnic}
+                  type="text"
+                  placeholder={t.auth.cnic_placeholder}
+                  value={cnic}
+                  onChange={(e) => setCnic(e.target.value)}
+                  required
+                />
+                <Input
+                  label={t.auth.address}
+                  type="text"
+                  placeholder={t.auth.address_placeholder}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                />
+              </div>
+            )}
 
             {error && (
               <div className="rounded-xl bg-red-50 border border-red-100 px-3 py-2.5">

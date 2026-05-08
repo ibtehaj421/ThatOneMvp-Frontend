@@ -27,14 +27,14 @@ function EmptyChat() {
         </div>
         <p className="text-sm font-semibold text-ink">Select a conversation</p>
         <p className="text-xs text-ink3 mt-1 leading-relaxed">
-          Pick an appointment from the left to chat with a patient.
+          Pick an appointment from the left to chat with your doctor.
         </p>
       </div>
     </div>
   );
 }
 
-export default function DoctorMessagesPage() {
+export default function PatientMessagesPage() {
   const { user } = useAuth();
   const userId = parseInt(user?.id ?? "0");
   const username = user?.name ?? "";
@@ -52,8 +52,8 @@ export default function DoctorMessagesPage() {
     });
   }, []);
 
-  const patientName = (appt: BackendAppointment) =>
-    appt.Patient?.FullName || appt.Patient?.Username || `Patient #${appt.PatientID}`;
+  const providerName = (appt: BackendAppointment) =>
+    appt.Provider?.Username ?? `Doctor #${appt.ProviderID}`;
 
   const initials = (name: string) =>
     name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase() || "??";
@@ -69,7 +69,7 @@ export default function DoctorMessagesPage() {
       <div className="w-72 shrink-0 flex flex-col border-r border-[#e7e5e4] bg-white">
         <div className="px-4 py-3.5 border-b border-[#e7e5e4]">
           <p className="text-sm font-semibold text-ink">Messages</p>
-          <p className="text-xs text-ink3 mt-0.5">Per-appointment patient chats</p>
+          <p className="text-xs text-ink3 mt-0.5">Per-appointment chats with your doctor</p>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -85,11 +85,11 @@ export default function DoctorMessagesPage() {
             </div>
           ) : appointments.length === 0 ? (
             <div className="px-4 py-10 text-center">
-              <p className="text-xs text-ink3">No appointments yet.</p>
+              <p className="text-xs text-ink3">No appointments yet. Book one to start chatting.</p>
             </div>
           ) : (
             appointments.map((appt) => {
-              const name = patientName(appt);
+              const name = providerName(appt);
               const active = selected?.ID === appt.ID;
               return (
                 <button
@@ -116,12 +116,6 @@ export default function DoctorMessagesPage() {
                         <span className="text-[10px] text-ink3 truncate">{appt.Organization.Name}</span>
                       )}
                     </div>
-                    {/* Show CNIC / location if available */}
-                    {(appt.Patient?.IdentificationNumber || appt.Patient?.Location) && (
-                      <p className="text-[10px] text-ink3 truncate mt-0.5">
-                        {[appt.Patient.IdentificationNumber, appt.Patient.Location].filter(Boolean).join(" · ")}
-                      </p>
-                    )}
                   </div>
                 </button>
               );
@@ -136,7 +130,7 @@ export default function DoctorMessagesPage() {
           <>
             {/* Header */}
             <div className="px-5 py-3 bg-white border-b border-[#e7e5e4] shrink-0">
-              <p className="text-sm font-semibold text-ink">{patientName(selected)}</p>
+              <p className="text-sm font-semibold text-ink">{providerName(selected)}</p>
               <p className="text-[11px] text-ink3 mt-0.5">
                 {selected.Organization?.Name && `${selected.Organization.Name} · `}
                 {new Date(selected.StartTime).toLocaleString("en-US", {
@@ -146,11 +140,6 @@ export default function DoctorMessagesPage() {
                 {" · "}
                 <span className="capitalize">{selected.Status}</span>
               </p>
-              {(selected.Patient?.IdentificationNumber || selected.Patient?.Location) && (
-                <p className="text-[10px] text-ink3 mt-0.5">
-                  {[selected.Patient.IdentificationNumber, selected.Patient.Location].filter(Boolean).join(" · ")}
-                </p>
-              )}
             </div>
             {/* Chat fills remaining space */}
             <div className="flex-1 overflow-hidden p-4">

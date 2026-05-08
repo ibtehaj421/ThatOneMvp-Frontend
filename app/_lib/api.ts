@@ -52,7 +52,27 @@ export interface BackendProfile {
   Username: string;
   Email: string;
   Role: string;
+  FullName: string;
+  IdentificationNumber: string;
+  Location: string;
   CreatedAt: string;
+}
+
+export interface BackendNotification {
+  ID: number;
+  UserID: number;
+  Message: string;
+  IsRead: boolean;
+  CreatedAt: string;
+}
+
+export interface BackendAppointmentMessage {
+  ID: number;
+  AppointmentID: number;
+  SenderID: number;
+  Message: string;
+  CreatedAt: string;
+  Sender?: { ID: number; Username: string; FullName: string };
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -61,12 +81,13 @@ export async function apiRegister(
   username: string,
   email: string,
   password: string,
-  role?: string
+  role?: string,
+  extra?: { full_name?: string; identification_number?: string; location?: string }
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await apiFetch("/register", {
       method: "POST",
-      body: JSON.stringify({ username, email, password, role }),
+      body: JSON.stringify({ username, email, password, role, ...extra }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({})) as { error?: string };
@@ -247,12 +268,13 @@ export interface BackendAppointment {
   OrganizationID: number;
   StartTime: string;
   EndTime: string;
-  Status: "pending" | "confirmed" | "cancelled" | "completed";
+  Status: "pending" | "confirmed" | "cancelled" | "completed" | "missed";
   Notes: string;
   CreatedAt: string;
   UpdatedAt: string;
   Organization?: { ID: number; Name: string };
-  Patient?: { ID: number; Username: string; Email: string };
+  Patient?: { ID: number; Username: string; Email: string; FullName: string; IdentificationNumber: string; Location: string };
+  Provider?: { ID: number; Username: string; Email: string };
 }
 
 // CreateBooking — body uses snake_case json tags defined in the handler struct.
@@ -494,4 +516,101 @@ export async function apiUpdateAppointmentNotes(
   } catch {
     return { ok: false, error: "Cannot reach server." };
   }
+}
+
+// PUT /appointments/:appointment_id/missed — mark appointment as missed (provider only).
+export async function apiMarkAppointmentMissed(appointmentId: number): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch(`/appointments/${appointmentId}/missed`, { method: "PUT" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      return { ok: false, error: data.error ?? "Failed to mark as missed." };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// GET /appointments/:appointment_id/chat — fetch existing appointment messages.
+export async function apiGetAppointmentMessages(appointmentId: number): Promise<{
+  ok: boolean; messages?: BackendAppointmentMessage[]; error?: string;
+}> {
+  try {
+    const res = await apiFetch(`/appointments/${appointmentId}/chat`);
+    if (!res.ok) return { ok: false, error: "Failed to fetch messages." };
+    const data = await res.json() as { messages: BackendAppointmentMessage[] };
+    return { ok: true, messages: data.messages ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// POST /appointments/:appointment_id/chat — send a message (HTTP fallback, WS preferred).
+export async function apiSendAppointmentMessage(appointmentId: number, message: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch(`/appointments/${appointmentId}/chat`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      return { ok: false, error: data.error ?? "Failed to send message." };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// GET /notifications — fetch all notifications for the current user.
+export async function apiGetNotifications(): Promise<{
+  ok: boolean; notifications?: BackendNotification[]; error?: string;
+}> {
+  try {
+    const res = await apiFetch("/notifications");
+    if (!res.ok) return { ok: false, error: "Failed to load notifications." };
+    const data = await res.json() as { notifications: BackendNotification[] };
+    return { ok: true, notifications: data.notifications ?? [] };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// PUT /notifications/read — mark all unread notifications as read.
+export async function apiMarkNotificationsRead(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch("/notifications/read", { method: "PUT" });
+    if (!res.ok) return { ok: false, error: "Failed to mark notifications." };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// PUT /profile — update patient profile fields.
+export async function apiUpdateProfile(data: {
+  full_name?: string;
+  identification_number?: string;
+  location?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch("/profile", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      return { ok: false, error: d.error ?? "Failed to update profile." };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
+}
+
+// WebSocket URL for appointment chat (direct — Next.js proxy does not handle WS upgrades).
+export function getAppointmentChatWsUrl(appointmentId: number, userId: number): string {
+  const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+  return `ws://${host}:8080/ws/chat?appointment_id=${appointmentId}&user_id=${userId}`;
 }

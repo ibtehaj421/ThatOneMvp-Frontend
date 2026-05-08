@@ -18,6 +18,10 @@ function getPageTitle(pathname: string, t: ReturnType<typeof useLocale>["t"]) {
   if (pathname.startsWith("/doctor-dashboard/reports")) return t.doctor.reports;
   if (pathname.startsWith("/doctor-dashboard/settings"))
     return t.doctor.settings;
+  if (pathname.startsWith("/doctor-dashboard/schedule"))
+    return t.doctor.schedule;
+  if (pathname.startsWith("/doctor-dashboard/notifications"))
+    return t.doctor.notifications;
   return t.doctor.title;
 }
 

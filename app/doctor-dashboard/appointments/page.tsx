@@ -2,19 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useLocale } from "../../_components/providers/LocaleProvider";
+import { AppointmentChat } from "../../_components/AppointmentChat";
 import {
   apiGetAppointments,
   apiGetAppointmentContext,
   apiUpdateAppointmentNotes,
+  apiMarkAppointmentMissed,
+  apiGetProfile,
   type BackendAppointment,
   type AppointmentContext,
 } from "../../_lib/api";
 
 function statusColor(status: BackendAppointment["Status"]) {
   if (status === "confirmed") return "bg-green-50 text-green-700";
-  if (status === "pending") return "bg-amber-50 text-amber-700";
+  if (status === "pending")   return "bg-amber-50 text-amber-700";
   if (status === "completed") return "bg-blue-50 text-blue-700";
-  return "bg-red-50 text-red-700";
+  if (status === "missed")    return "bg-red-50 text-red-700";
+  return "bg-gray-50 text-gray-600";
 }
 
 // --- SOAP Details Modal ---
@@ -468,6 +472,10 @@ export default function DoctorAppointmentsPage() {
   const [appointments, setAppointments] = useState<BackendAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [openApptId, setOpenApptId] = useState<number | null>(null);
+  const [openChatId, setOpenChatId] = useState<number | null>(null);
+  const [doctorId, setDoctorId] = useState<number | null>(null);
+  const [doctorUsername, setDoctorUsername] = useState("");
+  const [markingMissed, setMarkingMissed] = useState<number | null>(null);
 
   const fetchAppointments = async () => {
     const result = await apiGetAppointments();
@@ -477,7 +485,24 @@ export default function DoctorAppointmentsPage() {
 
   useEffect(() => {
     fetchAppointments();
+    apiGetProfile().then((r) => {
+      if (r.ok && r.profile) {
+        setDoctorId(r.profile.ID);
+        setDoctorUsername(r.profile.Username);
+      }
+    });
   }, []);
+
+  const handleMarkMissed = async (apptId: number) => {
+    setMarkingMissed(apptId);
+    const r = await apiMarkAppointmentMissed(apptId);
+    setMarkingMissed(null);
+    if (r.ok) {
+      setAppointments((prev) =>
+        prev.map((a) => (a.ID === apptId ? { ...a, Status: "missed" } : a))
+      );
+    }
+  };
 
   const now = new Date();
 
@@ -540,33 +565,72 @@ export default function DoctorAppointmentsPage() {
                 const patientLabel = appt.Patient?.Username ?? `Patient #${appt.PatientID}`;
                 const orgName = appt.Organization?.Name ?? `Organization #${appt.OrganizationID}`;
                 const initials = patientLabel.slice(0, 2).toUpperCase();
+                const isChatOpen = openChatId === appt.ID;
+                const canMarkMissed = appt.Status !== "missed" && appt.Status !== "completed" && appt.Status !== "cancelled";
+
                 return (
-                  <div
-                    key={appt.ID}
-                    className="bg-white rounded-2xl border border-[#e7e5e4] p-4 flex flex-col sm:flex-row sm:items-center gap-4"
-                  >
-                    <div className="w-11 h-11 rounded-full bg-accent/10 text-accent font-semibold flex items-center justify-center shrink-0">
-                      {initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-ink">{patientLabel}</p>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor(appt.Status)}`}>
-                          {appt.Status}
-                        </span>
+                  <div key={appt.ID} className="bg-white rounded-2xl border border-[#e7e5e4] overflow-hidden">
+                    <div className="p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className="w-11 h-11 rounded-full bg-accent/10 text-accent font-semibold flex items-center justify-center shrink-0">
+                        {initials}
                       </div>
-                      <p className="text-xs text-ink3 mt-0.5">{orgName}</p>
-                      {appt.Notes && <p className="text-xs text-ink3 mt-0.5 italic">{appt.Notes}</p>}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-ink">{patientLabel}</p>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor(appt.Status)}`}>
+                            {appt.Status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-ink3 mt-0.5">{orgName}</p>
+                        {appt.Patient?.IdentificationNumber && (
+                          <p className="text-xs text-ink3 mt-0.5">CNIC: {appt.Patient.IdentificationNumber}</p>
+                        )}
+                        {appt.Patient?.Location && (
+                          <p className="text-xs text-ink3">Location: {appt.Patient.Location}</p>
+                        )}
+                        {appt.Notes && <p className="text-xs text-ink3 mt-0.5 italic">{appt.Notes}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 sm:justify-end shrink-0 flex-wrap">
+                        <span className="text-xs text-ink3">{timeStr}</span>
+                        {canMarkMissed && (
+                          <button
+                            onClick={() => handleMarkMissed(appt.ID)}
+                            disabled={markingMissed === appt.ID}
+                            className="h-8 px-3 rounded-xl bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors disabled:opacity-40"
+                          >
+                            {markingMissed === appt.ID ? "…" : "Missed"}
+                          </button>
+                        )}
+                        {doctorId != null && (
+                          <button
+                            onClick={() => setOpenChatId(isChatOpen ? null : appt.ID)}
+                            className={[
+                              "h-8 px-3 rounded-xl text-xs font-medium transition-colors",
+                              isChatOpen ? "bg-accent text-white" : "border border-accent text-accent hover:bg-orange-50",
+                            ].join(" ")}
+                          >
+                            {isChatOpen ? "Close" : "Chat"}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setOpenApptId(appt.ID)}
+                          className="h-8 px-3 rounded-xl bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
+                        >
+                          Open
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 sm:justify-end shrink-0">
-                      <span className="text-xs text-ink3">{timeStr}</span>
-                      <button
-                        onClick={() => setOpenApptId(appt.ID)}
-                        className="h-8 px-3 rounded-xl bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
-                      >
-                        Open
-                      </button>
-                    </div>
+
+                    {/* Expandable chat */}
+                    {isChatOpen && doctorId != null && (
+                      <div className="border-t border-[#e7e5e4] p-3">
+                        <AppointmentChat
+                          appointmentId={appt.ID}
+                          currentUserId={doctorId}
+                          currentUsername={doctorUsername}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })

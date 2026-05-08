@@ -2,10 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "./providers/AuthProvider";
 import { useLocale } from "./providers/LocaleProvider";
+import { apiGetNotifications } from "../_lib/api";
 
 type NavLabelKey = keyof ReturnType<typeof useLocale>["t"]["nav"];
+
+function BellIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  );
+}
 
 interface NavItem {
   href: string;
@@ -84,6 +94,25 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { logout, user } = useAuth();
   const { t } = useLocale();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const load = () => {
+      apiGetNotifications().then((r) => {
+        if (r.ok && r.notifications) {
+          setUnreadCount(r.notifications.filter((n) => !n.IsRead).length);
+        }
+      });
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    const onRead = () => setUnreadCount(0);
+    window.addEventListener("notifications-read", onRead);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("notifications-read", onRead);
+    };
+  }, []);
 
   const isProvider = user?.role === "provider" || user?.role === "admin";
 
@@ -93,9 +122,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     { href: "/dashboard/provider/patients", labelKey: "patients", icon: <PatientsIcon />, providerOnly: true },
     { href: "/dashboard/chat", labelKey: "chat", icon: <ChatIcon /> },
     { href: "/dashboard/booking", labelKey: "booking", icon: <CalendarIcon /> },
+    { href: "/dashboard/messages", labelKey: "messages", icon: <ChatIcon /> },
     { href: "/dashboard/documents", labelKey: "documents", icon: <DocumentIcon /> },
     { href: "/dashboard/family", labelKey: "family", icon: <UsersIcon />, patientOnly: true },
     { href: "/dashboard/settings", labelKey: "settings", icon: <GearIcon /> },
+    { href: "/dashboard/notifications", labelKey: "notifications", icon: <BellIcon /> },
   ];
   const navItems = allNavItems.filter((item) => {
     if (item.providerOnly && !isProvider) return false;
@@ -158,12 +189,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   : "text-ink2 hover:bg-bg2 hover:text-ink",
               ].join(" ")}
             >
-              <span
-                className={isActive(item.href) ? "text-accent" : "text-ink3"}
-              >
+              <span className={isActive(item.href) ? "text-accent" : "text-ink3"}>
                 {item.icon}
               </span>
-              {t.nav[item.labelKey]}
+              <span className="flex-1">{t.nav[item.labelKey]}</span>
+              {item.labelKey === "notifications" && unreadCount > 0 && (
+                <span className="text-[10px] font-bold bg-accent text-white rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>

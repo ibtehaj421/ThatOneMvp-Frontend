@@ -166,6 +166,7 @@ function LocationPicker({
 export default function OrganizationPage() {
   const [myOrgs, setMyOrgs] = useState<BackendOrganization[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
 
   const [name, setName] = useState("");
   const [supportEmail, setSupportEmail] = useState("");
@@ -177,8 +178,13 @@ export default function OrganizationPage() {
 
   const fetchMyOrgs = async () => {
     setLoading(true);
+    setFetchError("");
     const result = await apiGetMyOrganizations();
-    if (result.ok && result.organizations) setMyOrgs(result.organizations);
+    if (result.ok && result.organizations) {
+      setMyOrgs(result.organizations);
+    } else {
+      setFetchError(result.error ?? "Failed to load clinics.");
+    }
     setLoading(false);
   };
 
@@ -285,6 +291,10 @@ export default function OrganizationPage() {
             {[0, 1, 2].map((i) => (
               <span key={i} className="w-2 h-2 rounded-full bg-ink3 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
             ))}
+          </div>
+        ) : fetchError ? (
+          <div className="bg-white rounded-2xl border border-red-100 p-8 text-center">
+            <p className="text-sm text-red-600">{fetchError}</p>
           </div>
         ) : myOrgs.length === 0 ? (
           <div className="bg-white rounded-2xl border border-[#e7e5e4] p-8 text-center">

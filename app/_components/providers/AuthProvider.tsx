@@ -52,6 +52,8 @@ export interface RegisterData {
   email: string;
   password: string;
   accountType: AccountType;
+  cnic?: string;
+  address?: string;
 }
 
 interface AuthContextType {
@@ -130,6 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data.email,
       data.password,
       data.accountType === "doctor" ? "provider" : undefined,
+      data.accountType !== "doctor"
+        ? { full_name: data.name, identification_number: data.cnic, location: data.address }
+        : undefined,
     );
     if (!regResult.ok) {
       return { ok: false, error: regResult.error };

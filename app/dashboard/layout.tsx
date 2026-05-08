@@ -17,6 +17,8 @@ function getPageTitle(pathname: string, t: ReturnType<typeof useLocale>["t"]) {
   if (pathname.startsWith("/dashboard/documents")) return t.documents.title;
   if (pathname.startsWith("/dashboard/family")) return t.family.title;
   if (pathname.startsWith("/dashboard/settings")) return t.settings.title;
+  if (pathname.startsWith("/dashboard/messages")) return t.nav.messages;
+  if (pathname.startsWith("/dashboard/notifications")) return t.nav.notifications;
   return "ANAM-AI";
 }
 

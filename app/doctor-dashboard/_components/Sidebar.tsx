@@ -2,13 +2,31 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../_components/providers/AuthProvider";
 import { useLocale } from "../../_components/providers/LocaleProvider";
+import { apiGetNotifications } from "../../_lib/api";
 
 interface NavItem {
   href: string;
   labelKey: keyof ReturnType<typeof useLocale>["t"]["doctor"];
   icon: React.ReactNode;
+}
+
+function TableIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  );
 }
 
 function GridIcon() {
@@ -153,6 +171,25 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { logout, user } = useAuth();
   const { t } = useLocale();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const load = () => {
+      apiGetNotifications().then((r) => {
+        if (r.ok && r.notifications) {
+          setUnreadCount(r.notifications.filter((n) => !n.IsRead).length);
+        }
+      });
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    const onRead = () => setUnreadCount(0);
+    window.addEventListener("notifications-read", onRead);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("notifications-read", onRead);
+    };
+  }, []);
 
   const navItems: NavItem[] = [
     { href: "/doctor-dashboard", labelKey: "overview", icon: <GridIcon /> },
@@ -180,6 +217,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       href: "/doctor-dashboard/organization",
       labelKey: "organization",
       icon: <BuildingIcon />,
+    },
+    {
+      href: "/doctor-dashboard/schedule",
+      labelKey: "schedule",
+      icon: <TableIcon />,
+    },
+    {
+      href: "/doctor-dashboard/notifications",
+      labelKey: "notifications",
+      icon: <BellIcon />,
     },
     {
       href: "/doctor-dashboard/settings",
@@ -247,12 +294,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   : "text-ink2 hover:bg-bg2 hover:text-ink",
               ].join(" ")}
             >
-              <span
-                className={isActive(item.href) ? "text-accent" : "text-ink3"}
-              >
+              <span className={isActive(item.href) ? "text-accent" : "text-ink3"}>
                 {item.icon}
               </span>
-              {t.doctor[item.labelKey]}
+              <span className="flex-1">{t.doctor[item.labelKey]}</span>
+              {item.labelKey === "notifications" && unreadCount > 0 && (
+                <span className="text-[10px] font-bold bg-accent text-white rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
